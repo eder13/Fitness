@@ -5,6 +5,7 @@
   "main": "app.js",
   "dependencies": {
     "debug": "^4.3.2",
+    "dotenv": "^17.4.2",
     "dropbox": "^4.0.16",
     "es6-promise": "^4.2.6",
     "express": "^4.22.1",
@@ -33,5 +34,8 @@
   "repository": {
     "type": "git",
     "url": "git://github.com/fuccac/Fitness.git"
+  },
+  "devDependencies": {
+    "@types/socket.io": "^3.0.2"
   }
 }

@@ -3,6 +3,8 @@
 
 
 //MODULES etc..
+var dotenv = require("dotenv");
+dotenv.config();
 var express = require('express');
 var application = express();
 var http = require("http");
