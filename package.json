@@ -4,11 +4,13 @@
   "description": "track and funnify your workout like a boss",
   "main": "app.js",
   "dependencies": {
+    "@azure/msal-node": "^5.5.0",
     "debug": "^4.3.2",
     "dotenv": "^17.4.2",
     "dropbox": "^4.0.16",
     "es6-promise": "^4.2.6",
     "express": "^4.22.1",
+    "express-session": "^1.19.0",
     "http": "^0.0.1-security",
     "isomorphic-fetch": "^2.2.1",
     "jshint": "^2.10.1",

@@ -20,6 +20,7 @@ function Config() {
     this.POINTS_FOR_POWERFACTOR = 500;
     this.POWER_FACTOR_ACTIVE = 0;
     this.EVENTLOG_MAX = 1200;
+    this.APP_USER_AGENT_STRING = process.env.APP_USER_AGENT_STRING;
 }
 
 module.exports = Config;

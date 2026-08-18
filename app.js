@@ -3,14 +3,15 @@
 
 
 //MODULES etc..
-var dotenv = require("dotenv");
-dotenv.config();
+require('dotenv').config();
 var express = require('express');
+var session = require('express-session');
 var application = express();
 var http = require("http");
 var JSONFileStorage = require('jsonfile-storage');
 var pwHash = require('password-hash');
 var Config = require("./server/Config");
+var AuthProvider = require('./server/AuthProvider');
 var Player = require("./server/Player");
 var FitnessManager = require("./server/FitnessManager");
 var DropBoxHandler = require("./server/dropBoxHandler");
@@ -497,12 +498,59 @@ function saveDataStorage() {
 
 
 function startServer() {
-	application.get('/', function (req, res) {
-		res.sendFile(__dirname + '/client/index.html');
-	});
-
+	// use
 	application.use('/', express.static(__dirname + '/client'));
 	application.use('/client', express.static(__dirname + '/client'));
+	application.use(
+		session({
+			secret: process.env.SESSION_COOKIE_SECRET ?? '',
+			resave: false,
+			saveUninitialized: true,
+			cookie: {
+				path: '/',
+				httpOnly: true,
+				secure: process.env.NODE_ENV === 'production',
+			},
+		})
+	);
+
+	function isAppRequest(request) {
+		return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
+	}
+	const authProvider = new AuthProvider();
+
+	// controller
+	application.get('/', function (_, res) {
+		res.sendFile(__dirname + '/client/index.html');
+	});
+	application.post('/signin', async function(req, res) {
+		req.session.csrfToken = authProvider.guid();
+		req.session.nonce = authProvider.guid();
+
+		const state =
+            {
+				stage: 'SignIn',
+                redirectTo: '/',
+                csrfToken: req.session.csrfToken,
+                nonce: req.session.nonce,
+				isApp: isAppRequest(req)
+            };
+        
+		res.json({
+			authUrl: await authProvider.getAuthUrl(req, state, {
+				authority: 'TODO CHECK'
+			}, {
+				authority: 'TODO CHECK',
+				scope: []
+			})
+		});
+	});
+	application.post('/signout', function () {
+
+	});
+	application.get('/auth/callback', function() {
+
+	});
 
 	server.listen(process.env.PORT || config.LOCAL_PORT);
 	logFile.log("Started Server", true, 0);
