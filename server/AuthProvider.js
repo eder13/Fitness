@@ -1,6 +1,7 @@
 // @ts-check
 /*jshint esversion: 6 */
 
+var fetch = require('isomorphic-fetch');
 var AuthConfig = require('./authConfig');
 var msal = require('@azure/msal-node');
 
@@ -13,11 +14,13 @@ class AuthProvider {
     }
 
     async getAuthUrl(request, state = {}, authCodeUrlRequestParams = {}, authCodeRequestParams = {}) {
-        // TODO: Do this check
-        /* if (!this.config.msalConfig.auth.authorityMetadata) {
-            const authorityMetadata = await this.getAuthorityMetadata();
-            this.config.msalConfig.auth.authorityMetadata = JSON.stringify(authorityMetadata);
-        } */
+        if (!this._config.confidentialClient.auth.authorityMetadata) {
+            const authorityMetadata = await this._getAuthorityMetadata();
+            if (authorityMetadata) {
+                this._config.confidentialClient.auth.authorityMetadata = JSON.stringify(authorityMetadata);
+                this._confidentialClient = new msal.ConfidentialClientApplication(this._config.confidentialClient);
+            }
+        }
         
         await this._setRequestAuthValues(request, 
                         {
@@ -62,12 +65,35 @@ class AuthProvider {
         }
     }
 
+    /**
+     * Retrieves oidc metadata from the openid endpoint
+     * @returns
+     */
+    async _getAuthorityMetadata() {
+        try {
+            const response = await fetch(this._config.openIdConnectInfoURI);
+
+            if (!response.ok) {
+                throw new Error("Failed to fetch authority meta data...");
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error(error);
+            return undefined;
+        }
+    }
+
     guid() {
         return this._cryptoProvider.createNewGuid();
     }
 
     base64Encode(par = '') {
         return this._cryptoProvider.base64Encode(par);
+    }
+
+    get config() {
+        return this._config;
     }
 }
 

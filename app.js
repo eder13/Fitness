@@ -513,6 +513,7 @@ function startServer() {
 			},
 		})
 	);
+	application.use(express.urlencoded({ extended: false }));
 
 	function isAppRequest(request) {
 		return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
@@ -529,7 +530,7 @@ function startServer() {
 
 		const state =
             {
-				stage: 'SignIn',
+				stage: authProvider.config.flows.signUpSignIn, // flow, in this case sign in and sign up flow created in Entra ID Dashboard
                 redirectTo: '/',
                 csrfToken: req.session.csrfToken,
                 nonce: req.session.nonce,
@@ -538,9 +539,9 @@ function startServer() {
         
 		res.json({
 			authUrl: await authProvider.getAuthUrl(req, state, {
-				authority: 'TODO CHECK'
+				authority: authProvider.config.confidentialClient.auth.authority
 			}, {
-				authority: 'TODO CHECK',
+				authority: authProvider.config.confidentialClient.auth.authority,
 				scope: []
 			})
 		});
@@ -548,8 +549,14 @@ function startServer() {
 	application.post('/signout', function () {
 
 	});
-	application.get('/auth/callback', function() {
+	application.post('/auth/callback', function(req, res) {
+		console.log(req.body);
 
+		// TODO - acquire token here ...
+		res.json({
+			code: req.body.code,
+			state: req.body.state
+		});
 	});
 
 	server.listen(process.env.PORT || config.LOCAL_PORT);

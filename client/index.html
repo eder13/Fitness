@@ -12,7 +12,31 @@
 	<link rel="stylesheet" href="style.css" />
 
 	<div id="div_login">
-		<h1>Welcome to <b>GAGS</b> (Geile App zum gemeinsamen Sporteln)</h1> <br><br>
+		<h1>Welcome to <b>GAGS</b> (Geile App zum gemeinsamen Sporteln)</h1>
+		
+		<form id="login__form" method="post" action="/signin">
+			<div
+				style="
+					color: #721c24;
+					background-color: #f8d7da;
+					border-color: #f5c6cb;
+					position: relative;
+					padding: 0.75rem 1.25rem;
+					margin-bottom: 1rem;
+					border: 1px solid transparent;
+					border-radius: 0.25rem;
+					width: fit-content;
+				"
+				class="v-hidden"
+				id="login__form-error"
+			>
+				Fehler beim Einloggen. Bitte versuchen Sie es erneut.
+			</div>
+
+			<label for="login__form-btn">Login or Register</label>
+			<button id="login__form-btn" type="submit">Login</button>
+		</form>
+		
 		<label for="input_Username">Name:</label>
 		<br><input id="input_Username" type="text" placeholder="Username"></input><br>
 		<label for="input_Password">Passwort:</label>

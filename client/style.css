@@ -539,3 +539,7 @@ button:hover {
     width: 2%;
     height: 2%;
 }
+
+.v-hidden {
+    visibility: hidden !important;
+}

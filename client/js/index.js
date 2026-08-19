@@ -126,6 +126,35 @@ var timer;
 *******************************************************************************************************************
 ******************************************************************************************************************/
 
+$("#login__form").on("submit", function (event) {
+    event.preventDefault();
+
+    var form = this;
+
+    $.ajax({
+        url: form.action,
+        method: form.method
+    })
+    .done(function (response) {
+        if (response.authUrl) {
+            window.location.href = response.authUrl;
+        } else {
+            $("#login__form-error").removeClass("v-hidden");
+
+            setTimeout(function () {
+                $("#login__form-error").addClass("v-hidden");
+            }, 5000);
+        }
+    })
+    .fail(function (xhr) {
+        $("#login__form-error").removeClass("v-hidden");
+
+        setTimeout(function () {
+            $("#login__form-error").addClass("v-hidden");
+        }, 5000);
+    });
+});
+
 $("#input_HideInactive").change(function(){
    //todo
    if ($("#input_HideInactive").prop("checked")){
