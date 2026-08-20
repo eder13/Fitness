@@ -12,6 +12,7 @@ var JSONFileStorage = require('jsonfile-storage');
 var pwHash = require('password-hash');
 var Config = require("./server/Config");
 var AuthProvider = require('./server/AuthProvider');
+var AuthService = require('./server/authService');
 var Player = require("./server/Player");
 var FitnessManager = require("./server/FitnessManager");
 var DropBoxHandler = require("./server/dropBoxHandler");
@@ -519,6 +520,7 @@ function startServer() {
 		return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
 	}
 	const authProvider = new AuthProvider();
+	const authService = new AuthService(authProvider);
 
 	// controller
 	application.get('/', function (_, res) {
@@ -549,14 +551,67 @@ function startServer() {
 	application.post('/signout', function () {
 
 	});
-	application.post('/auth/callback', function(req, res) {
-		console.log(req.body);
+	application.post('/auth/callback', async function(req, res) {
+		try {
+			if (!req.body.code || !req.body.state) {
+				throw new Error('Missing code and/or state');
+			}
 
-		// TODO - acquire token here ...
-		res.json({
-			code: req.body.code,
-			state: req.body.state
-		});
+			const decodedState = JSON.parse(authProvider.base64Decode(req.body.state));
+			const { stage, csrfToken, nonce, redirectTo, isApp } = decodedState;
+
+			if (req.query.error || req.body.error) {
+				throw new Error(req.query.error ?? req.body.error, { cause: {
+					stage,
+					isApp
+				}});
+			}
+			
+			if (req.session.nonce !== nonce) {
+				throw new Error('nonce check failed', { cause: {
+					stage,
+					isApp
+				}});
+			}
+
+			await authService.callback(req, stage, req.body.code, decodedState);
+			res.redirect(redirectTo);
+		} catch (e) {
+			let error = e;
+			let isApp = false;
+			let stage = 'unknown';
+
+			if (e instanceof Error) {
+				error = e.message;
+				isApp = e.cause?.isApp;
+				stage = e.cause?.stage ?? stage;
+			}
+
+			const errorMessage = typeof error === 'string' ? e : JSON.stringify(error);
+			const errorRedirectWeb = `<meta http-equiv="refresh" content="3;url=/?error=true&message=${errorMessage}&flow=${stage}"></meta>`;
+
+            res.send(
+			`
+				<!DOCTYPE html>
+					<html>
+						<head>
+							<title>Login Error</title>
+							${!isApp ? errorRedirectWeb : ''}
+						</head>
+						<body>
+							${
+								isApp
+									? '<h1>Error during Authentication. Please close the Browser and try again.</h1>'
+									: '<h1>Error during Authentication. Redirecting to Home.</h1>'
+							}
+							<p>
+								${errorMessage}
+							</p>
+						</body>
+					</html>
+				`
+			).status(400);
+		}
 	});
 
 	server.listen(process.env.PORT || config.LOCAL_PORT);

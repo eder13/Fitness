@@ -92,8 +92,37 @@ class AuthProvider {
         return this._cryptoProvider.base64Encode(par);
     }
 
+    base64Decode(par = '') {
+        return this._cryptoProvider.base64Decode(par)
+    }
+
     get config() {
         return this._config;
+    }
+
+    async login(request, code = '', decodedState = {}) {
+        try {
+            const authCodeRequest = request.session.authCodeRequest;
+            if (!authCodeRequest) {
+                throw new Error('session for auth code request got lost...', {
+                    cause: {
+                        stage: decodedState.stage,
+                        isApp: decodedState.isApp
+                    }
+                });
+            }
+
+            authCodeRequest.code = code;
+            authCodeRequest.codeVerifier = request.session.pkceCodes.verifier;
+
+            this._confidentialClient.getTokenCache().deserialize(request.session.tokenCache);
+            const tokenResponse = await this._confidentialClient.acquireTokenByCode(authCodeRequest, request.body);
+            request.session.tokenCache = this._confidentialClient.getTokenCache().serialize();
+            return tokenResponse;
+        } catch (e) {
+            console.error(e);
+            return null;
+        }
     }
 }
 
