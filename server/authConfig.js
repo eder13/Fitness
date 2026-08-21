@@ -30,6 +30,9 @@ function AuthConfig() {
         signUpSignIn: process.env.SIGN_UP_SIGN_IN_FLOW
     };
 
+    this.tokenSecret = process.env.TOKEN_SECRET;
+    this.tokenExpirationTime = process.env.TOKEN_EXPIRATION_TIME_MINUTES ?? '60m';
+    this.tokenCookieName = process.env.TOKEN_COOKIE_NAME ?? 'f_t';
     this.redirectURI = process.env.REDIRECT_URI;
     this.postLogoutURI = process.env.POST_LOGOUT_REDIRECT_URI;
     this.openIdConnectInfoURI = `${this.confidentialClient.auth.authority}${process.env.MSAL_DOMAIN_NAME}.onmicrosoft.com/v2.0/.well-known/openid-configuration`

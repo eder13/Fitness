@@ -574,7 +574,7 @@ function startServer() {
 				}});
 			}
 
-			await authService.callback(req, stage, req.body.code, decodedState);
+			await authService.callback(req, res, stage, req.body.code, decodedState);
 			res.redirect(redirectTo);
 		} catch (e) {
 			let error = e;

@@ -6,6 +6,7 @@ var AuthConfig = require('./authConfig');
 var msal = require('@azure/msal-node');
 
 class AuthProvider {
+    TOKEN_NAME = 'MSAL_TOKEN_MICROSOFT_ENTRA_EXTERNAL_ID';
     _cryptoProvider = new msal.CryptoProvider();
     _config = new AuthConfig();
 
