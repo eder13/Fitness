@@ -40,5 +40,7 @@ docker run -e PROXY_MODE=1 -p 8080:8080 <your-image-tag>
 
 The final image is based on a minimal container image that runs rootless.
 
+ℹ️ Note that since tokens run on in memory cache, currently only one node can be used inside kubernetes. In the future this will be resolved by using [Redis over memory cache](https://learn.microsoft.com/en-us/entra/msal/javascript/node/caching) for token caching, as recommended by Microsoft regarding Entra External ID.
+
 ## License
 (c) fuccac

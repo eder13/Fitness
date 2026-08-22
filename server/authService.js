@@ -55,7 +55,7 @@ class AuthService {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            maxAge: encrypted.token.expiresAt, // TODO: I am not sure this is needed or even right value
+            //maxAge: encrypted.token.expiresAt, // TODO: I am not sure this is needed or even right value, I think it expects ms instead of s
             path: '/'
         });
     }
