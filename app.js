@@ -536,9 +536,9 @@ function startServer() {
 				});
 			}
 
-			const user = await authService.decryptAndValidateJWE(req, jwe);
+			const user = await authService.decryptAndValidateJWE(jwe);
 
-			if (!user || Object.entries(user).length <= 0 || !user.username || !user.id || !user.email) {
+			if (!user || !user.username || !user.id || !user.email) {
 				return res.status(401).json({
 					message: 'Not authenticated'
 				});
@@ -558,14 +558,12 @@ function startServer() {
 		});
 	});
 	application.post('/signin', async function(req, res) {
-		req.session.csrfToken = authProvider.guid();
 		req.session.nonce = authProvider.guid();
 
 		const state =
             {
 				stage: authProvider.config.flows.signUpSignIn, // flow, in this case sign in and sign up flow created in Entra ID Dashboard
                 redirectTo: '/',
-                csrfToken: req.session.csrfToken,
                 nonce: req.session.nonce,
 				isApp: isAppRequest(req)
             };
@@ -589,7 +587,7 @@ function startServer() {
 			}
 
 			const decodedState = JSON.parse(authProvider.base64Decode(req.body.state));
-			const { stage, csrfToken, nonce, redirectTo, isApp } = decodedState;
+			const { stage, nonce, redirectTo, isApp } = decodedState;
 
 			if (req.query.error || req.body.error) {
 				throw new Error(req.query.error ?? req.body.error, { cause: {

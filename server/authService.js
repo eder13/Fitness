@@ -85,7 +85,7 @@ class AuthService {
         return new Uint8Array(Buffer.from(this._authProvider.config.tokenSecret, 'utf-8'));
     }
 
-    async decryptAndValidateJWE(request, jwe = '') {
+    async decryptAndValidateJWE(jwe = '') {
         const { plaintext } = await jose.compactDecrypt(
             jwe,
             this.getEncryptionKey()
@@ -115,10 +115,6 @@ class AuthService {
 
         if (!((expiresAt ?? Infinity) > currentUnixTimeInSeconds)) {
             throw new Error( 'Token already expired!');
-        }
-
-        if (request.session.nonce !== jwtVerifyPayload.nonce) {
-            throw new Error('nonce token check failed');
         }
 
         if (!(jwtVerifyPayload.aud && jwtVerifyPayload.aud === this._authProvider.confidentialClient.config.auth?.clientId)) {
