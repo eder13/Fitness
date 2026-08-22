@@ -14,13 +14,17 @@ class AuthProvider {
         this._confidentialClient = new msal.ConfidentialClientApplication(this._config.confidentialClient);
     }
 
+    async receiveAuthorityMetaData() {
+        const authorityMetadata = await this._getAuthorityMetadata();
+        if (authorityMetadata) {
+            this._config.confidentialClient.auth.authorityMetadata = JSON.stringify(authorityMetadata);
+            this._confidentialClient = new msal.ConfidentialClientApplication(this._config.confidentialClient);
+        }
+    }
+
     async getAuthUrl(request, state = {}, authCodeUrlRequestParams = {}, authCodeRequestParams = {}) {
         if (!this._config.confidentialClient.auth.authorityMetadata) {
-            const authorityMetadata = await this._getAuthorityMetadata();
-            if (authorityMetadata) {
-                this._config.confidentialClient.auth.authorityMetadata = JSON.stringify(authorityMetadata);
-                this._confidentialClient = new msal.ConfidentialClientApplication(this._config.confidentialClient);
-            }
+            await this.receiveAuthorityMetaData();
         }
         
         await this._setRequestAuthValues(request, 
@@ -99,6 +103,10 @@ class AuthProvider {
 
     get config() {
         return this._config;
+    }
+
+    get confidentialClient() {
+        return this._confidentialClient;
     }
 
     async login(request, code = '', decodedState = {}) {

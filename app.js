@@ -19,7 +19,8 @@ var DropBoxHandler = require("./server/dropBoxHandler");
 let Log = require("./server/Log");
 let Common = require("./client/js/common");
 let EmailManager = require("./server/EmailManager");
-
+var AuthConfig = require('./server/authConfig');
+var cookieParser = require('cookie-parser');
 
 
 //MODULE INITS
@@ -504,6 +505,7 @@ function startServer() {
 	application.use('/client', express.static(__dirname + '/client'));
 	application.use(
 		session({
+			name: 'fitness_caf_session',
 			secret: process.env.SESSION_COOKIE_SECRET ?? '',
 			resave: false,
 			saveUninitialized: true,
@@ -515,16 +517,45 @@ function startServer() {
 		})
 	);
 	application.use(express.urlencoded({ extended: false }));
+	application.use(cookieParser());
 
 	function isAppRequest(request) {
 		return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
 	}
+	const authConfig = new AuthConfig();
 	const authProvider = new AuthProvider();
 	const authService = new AuthService(authProvider);
 
+	// middleware
+	async function authenticate(req, res, next) {
+		try {
+			const jwe = req.cookies?.[authConfig.tokenCookieName];
+			if (!jwe) {
+				return res.status(401).json({
+					message: 'Not authenticated'
+				});
+			}
+
+			const user = await authService.decryptAndValidateJWE(req, jwe);
+
+			if (!user || Object.entries(user).length <= 0 || !user.username || !user.id || !user.email) {
+				return res.status(401).json({
+					message: 'Not authenticated'
+				});
+			}
+
+			req.user = user;
+			next();
+		} catch (err) {
+			next(err);
+		}
+	}
+
 	// controller
-	application.get('/', function (_, res) {
-		res.sendFile(__dirname + '/client/index.html');
+	application.get('/profile', authenticate, (req, res) => {
+		res.json({ 
+			user: req.user
+		});
 	});
 	application.post('/signin', async function(req, res) {
 		req.session.csrfToken = authProvider.guid();

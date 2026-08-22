@@ -50,7 +50,14 @@ class AuthService {
             user: authTokenPayload.getUser()
         }
 
-        await this._setAuthenticated(request, response, encrypted);
+        // save JWE inside a Cookie
+        response.cookie(this._authProvider.config.tokenCookieName, encrypted.token.token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            maxAge: encrypted.token.expiresAt, // TODO: I am not sure this is needed or even right value
+            path: '/'
+        });
     }
 
     async _signJWT(issuer = '', subject = '', tokenPayload = new AuthToken(), type = 'token') {
@@ -78,28 +85,59 @@ class AuthService {
         return new Uint8Array(Buffer.from(this._authProvider.config.tokenSecret, 'utf-8'));
     }
 
-    async _setAuthenticated(request, response, encrypted) {
-        request.session.isAuthenticated = true;
-        request.session.user = encrypted.user;
+    async decryptAndValidateJWE(request, jwe = '') {
+        const { plaintext } = await jose.compactDecrypt(
+            jwe,
+            this.getEncryptionKey()
+        );
+        const payload = JSON.parse(
+            new TextDecoder().decode(plaintext)
+        );
 
-        // ensure that session is saved before advancing, load does not happen before session is saved
-        await new Promise((res, rej) => {
-            request.session.save(function (err) {
-                if (err) {
-                    rej(err);
-                }
-                res(undefined);
-            });
-        });
+        if (!this._authProvider.confidentialClient.config.auth?.authorityMetadata) {
+            await this._authProvider.receiveAuthorityMetaData();
+        }
 
-        // save JWE inside Cookie
-        response.cookie(this._authProvider.config.tokenCookieName, encrypted.token.token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: encrypted.token.expiresAt,
-            path: '/'
-        });
+        let jwksUrl = '';
+
+        try {
+            jwksUrl = JSON.parse(this._authProvider.confidentialClient.config.auth?.authorityMetadata).jwks_uri;
+        } catch {
+            console.error('Could not read jwks_url...');
+            return false;
+        }
+
+        const token = payload[this._authProvider.TOKEN_NAME].token;
+        const expiresAt = payload[this._authProvider.TOKEN_NAME].expiresAt;
+        const currentUnixTimeInSeconds = Number((Date.now() / 1000).toFixed(0));
+        const JWKS = jose.createRemoteJWKSet(new URL(jwksUrl));
+        const { payload: jwtVerifyPayload } = await jose.jwtVerify(token, JWKS);
+
+        if (!((expiresAt ?? Infinity) > currentUnixTimeInSeconds)) {
+            throw new Error( 'Token already expired!');
+        }
+
+        if (request.session.nonce !== jwtVerifyPayload.nonce) {
+            throw new Error('nonce token check failed');
+        }
+
+        if (!(jwtVerifyPayload.aud && jwtVerifyPayload.aud === this._authProvider.confidentialClient.config.auth?.clientId)) {
+            throw new Error('The Token was audited from an unknown clientId!');
+        }
+
+        if (jwtVerifyPayload.iat && currentUnixTimeInSeconds < jwtVerifyPayload.iat) {
+            throw new Error( 'The Token was issued somewhere in the future!');
+        }
+
+        if (jwtVerifyPayload.nbf && currentUnixTimeInSeconds < jwtVerifyPayload.nbf) {
+            throw new Error('The Token is not yet valid and can not be used!');
+        }
+
+        return {
+            id: jwtVerifyPayload.sub,
+            username: jwtVerifyPayload.preferred_username,
+            email: jwtVerifyPayload.preferred_username
+        };
     }
 }
 
