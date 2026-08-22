@@ -103,8 +103,11 @@ class AuthService {
         try {
             jwksUrl = JSON.parse(this._authProvider.confidentialClient.config.auth?.authorityMetadata).jwks_uri;
         } catch {
-            console.error('Could not read jwks_url...');
-            return false;
+            throw new Error('Could not read jwks_url from meta data.', {
+                cause: {
+                    code: 'ERR_JWKS_META'
+                }
+            })
         }
 
         const token = payload[this._authProvider.TOKEN_NAME].token;
@@ -114,19 +117,35 @@ class AuthService {
         const { payload: jwtVerifyPayload } = await jose.jwtVerify(token, JWKS);
 
         if (!((expiresAt ?? Infinity) > currentUnixTimeInSeconds)) {
-            throw new Error( 'Token already expired!');
+            throw new Error( 'Token already expired!', {
+                cause: {
+                    code: 'ERR_JWT_EXPIRED'
+                }
+            });
         }
 
         if (!(jwtVerifyPayload.aud && jwtVerifyPayload.aud === this._authProvider.confidentialClient.config.auth?.clientId)) {
-            throw new Error('The Token was audited from an unknown clientId!');
+            throw new Error('The Token was audited from an unknown clientId!', {
+                cause: {
+                    code: 'ERR_JWT_AUD'
+                }
+            });
         }
 
         if (jwtVerifyPayload.iat && currentUnixTimeInSeconds < jwtVerifyPayload.iat) {
-            throw new Error( 'The Token was issued somewhere in the future!');
+            throw new Error( 'The Token was issued somewhere in the future!', {
+                cause: {
+                    code: 'ERR_JWT_IAT'
+                }
+            });
         }
 
         if (jwtVerifyPayload.nbf && currentUnixTimeInSeconds < jwtVerifyPayload.nbf) {
-            throw new Error('The Token is not yet valid and can not be used!');
+            throw new Error('The Token is not yet valid and can not be used!', {
+                cause: {
+                    code: 'ERR_JWT_NBF'
+                }
+            });
         }
 
         return {
