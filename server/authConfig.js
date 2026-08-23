@@ -32,6 +32,7 @@ function AuthConfig() {
         signUpSignIn: process.env.SIGN_UP_SIGN_IN_FLOW ?? 'signIn'
     }; 
 
+    this.tenantSubdomain = process.env.MSAL_DOMAIN_NAME ?? '';
     this.tokenSecret = process.env.TOKEN_SECRET ?? 'this_has_to_be_exactly_32_chars_';
     this.tokenExpirationTime = process.env.TOKEN_EXPIRATION_TIME_MINUTES ?? '60m';
     this.tokenCookieName = process.env.TOKEN_COOKIE_NAME ?? 'f_t';

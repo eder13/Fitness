@@ -3,18 +3,17 @@
 
 <head>
 	<title>💪 G A G S 💪</title>
-</head>
-<link rel="icon" 
+	<link rel="icon" 
       type="image/png" 
       href="/client/pics/fav.png">
+	<link rel="stylesheet" href="style.css" />
+</head>
 
 <body>
-	<link rel="stylesheet" href="style.css" />
-
 	<div id="div_login">
 		<h1>Welcome to <b>GAGS</b> (Geile App zum gemeinsamen Sporteln)</h1>
 		
-		<form id="login__form" method="post" action="/signin">
+		<form class="v-hidden" id="login__form" method="post" action="/signin">
 			<div
 				style="
 					color: #721c24;
@@ -36,18 +35,17 @@
 			<label for="login__form-btn">Login or Register</label>
 			<button id="login__form-btn" type="submit">Login</button>
 		</form>
-		
-		<label for="input_Username">Name:</label>
-		<br><input id="input_Username" type="text" placeholder="Username"></input><br>
-		<label for="input_Password">Passwort:</label>
-		<br><input id="input_Password" type="password" placeholder="Passwort"></input><br><br>
-		<label for="input_regSecret">Registrierungsschlüssel:</label>
-		<br><input id="input_regSecret" type="password" placeholder="Passwort"></input><br><br>
-		<button id="button_SignIn">Anmelden</button>
-		<button id="button_SignUp">Registrieren</button>
-		<br><br>
-		<label for="input_RememberMe">Login merken</label>
-		<input id="input_RememberMe" type="checkbox" checked></input>
+
+		<div class="v-hidden" id="account-info">
+			<div>
+				<strong>Eingeloggt als:</strong><span class="d-none" id="account-info__id"></span>
+				<span id="account-info__email"></span>
+				<span class="d-none" id="account-info__username"></span>
+				<form id="logout__form" method="post" action="/signout">
+					<button id="logout__form-btn" type="submit">logout</button>
+				</form>
+			</div>
+		</div>
 
 		<hr>
 
@@ -792,3 +790,4 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.js"></script>
 <script type="text/javascript" src="./js/common.js"></script>
 <script type="text/javascript" src="./js/index.js"></script>
+<script type="text/javascript" src="./js/auth.js"></script>

@@ -532,42 +532,23 @@ function startServer() {
 			const jwe = req.cookies?.[authConfig.tokenCookieName];
 			if (!jwe) {
 				return res.status(401).json({
-					message: 'Not authenticated',
-					code: 'NO_JWE_COOKIE'
+					code: 'ERR_AUTHENTICATION_REQUIRED'
 				});
-			}
+			} 
 
-			const user = await authService.decryptAndValidateJWE(jwe);
+			const { token, expiresAt } = await authService.decryptJWE(jwe);
+			const user = await authService.validateToken(token, expiresAt);
 
 			if (!user?.username || !user?.id || !user?.email) {
 				return res.status(401).json({
-					message: 'Not authenticated',
-					code: 'NO_VALID_USER_PAYLOAD_IN_COOKIE'
+					code: 'ERR_AUTHENTICATION_REQUIRED'
 				});
 			}
 
 			req.user = user;
 			next();
 		} catch (err) {
-			const errorCode = err?.code ?? err?.cause?.code ?? 'UNKOWN_ERROR_CODE';
-			const errorMessage = err?.message ?? 'generic error';
-
-			const error = {
-                message: errorMessage,
-				code: errorCode,
-				tryRefresh: false
-            }
-
-			if (errorCode?.toLowerCase()?.includes('expire')) {
-				logFile.log('[auth]: Token expired, sending client info that they should try to retrieve new token via refresh token...', true, 1);
-				error.tryRefresh = true;
-				// logFile.log('[auth]: Deleting expired auth token', true, 0);
-				// res.clearCookie(authConfig.tokenCookieName, {
-				// 	path: '/'
-				// });
-			}
-
-			return res.status(401).json(error);
+			return res.status(401).json({ code: err?.code ?? err?.cause?.code ?? 'ERR_UNKOWN' });
 		}
 	}
 
@@ -577,8 +558,51 @@ function startServer() {
 			user: req.user
 		});
 	});
-	application.post('/profile/refresh', (req, res) => {
-		// TODO: Refresh logic here...with acquireTokenSilent...
+	application.post('/profile/refresh', async (req, res, next) => {
+		try {
+			const jwe = req.cookies?.[authConfig.tokenCookieName];
+
+			if (!jwe) {
+				return res.status(401).json({
+					code: 'ERR_AUTHENTICATION_REQUIRED'
+				});
+			}
+
+			const { user, expiresAt } = await authService.decryptJWE(jwe);
+
+			if (!authService.isExpired(expiresAt)) {
+				return res.status(400).json({
+					code: 'ERR_TOKEN_STILL_VALID'
+				});
+			}
+
+			if (!user?.homeAccountId) {
+				res.clearCookie(authProvider.config.tokenCookieName, {
+					path: '/'
+				});
+
+				return res.status(401).json({
+					code: 'ERR_AUTHENTICATION_REQUIRED'
+				});
+			}
+
+			await authService.refreshToken(
+				req,
+				res,
+				user.homeAccountId
+			);
+
+			return res.status(200).json({
+				success: true
+			});
+		} catch (e) {
+			console.error(e);
+			
+			res.clearCookie(authProvider.config.tokenCookieName, {
+				path: '/'
+			});
+			next(e);
+		}
 	});
 	application.post('/signin', async function(req, res) {
 		req.session.nonce = authProvider.guid();
@@ -600,8 +624,9 @@ function startServer() {
 			})
 		});
 	});
-	application.post('/signout', function () {
-
+	application.post('/signout', async function (req, res) {
+		const logoutEndpoint = await authService.logout(req, res);
+		res.redirect(logoutEndpoint);
 	});
 	application.post('/auth/callback', async function(req, res) {
 		try {

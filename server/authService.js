@@ -26,38 +26,11 @@ class AuthService {
 
     async login(request, response, code = '', decodedState = {}) {
         const authenticationResult = await this._authProvider.login(request, code, decodedState);
-        
-        if (!authenticationResult) {
-            throw new Error('Could not acquire token...');
-        }
+        await this._createJWETokenCookie(authenticationResult, response);
+    }
 
-        const { idToken, idTokenClaims } = authenticationResult;
-
-        const authTokenPayload = new AuthToken();
-        authTokenPayload.setToken(this._authProvider.TOKEN_NAME, { token: idToken, expiresAt: idTokenClaims.exp });
-        authTokenPayload.setUser({
-            id: idTokenClaims.sub,
-            email: idTokenClaims.preferred_username,
-            userName: idTokenClaims.name
-        });
-
-        if (!authTokenPayload.isValid()) {
-            throw new Error('invalid auth token payload...');
-        }
-
-        const encrypted = {
-            token: await this._signJWT(idTokenClaims.iss,'login', authTokenPayload),
-            user: authTokenPayload.getUser()
-        }
-
-        // save JWE inside a Cookie
-        response.cookie(this._authProvider.config.tokenCookieName, encrypted.token.token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            //maxAge: encrypted.token.expiresAt, // TODO: I am not sure this is needed or even right value, I think it expects ms instead of s
-            path: '/'
-        });
+    async logout(request, response) {
+        return await this._authProvider.logout(request, response);
     }
 
     async _signJWT(issuer = '', subject = '', tokenPayload = new AuthToken(), type = 'token') {
@@ -85,7 +58,7 @@ class AuthService {
         return new Uint8Array(Buffer.from(this._authProvider.config.tokenSecret, 'utf-8'));
     }
 
-    async decryptAndValidateJWE(jwe = '') {
+    async decryptJWE(jwe = '') {
         const { plaintext } = await jose.compactDecrypt(
             jwe,
             this.getEncryptionKey()
@@ -94,6 +67,18 @@ class AuthService {
             new TextDecoder().decode(plaintext)
         );
 
+        const token = payload[this._authProvider.TOKEN_NAME].token;
+        const expiresAt = payload[this._authProvider.TOKEN_NAME].expiresAt;
+        const user = payload.user;
+
+        return {
+            token,
+            expiresAt,
+            user
+        }
+    }
+
+    async validateToken(token = '', expiresAt = 0) {
         if (!this._authProvider.confidentialClient.config.auth?.authorityMetadata) {
             await this._authProvider.receiveAuthorityMetaData();
         }
@@ -107,16 +92,13 @@ class AuthService {
                 cause: {
                     code: 'ERR_JWKS_META'
                 }
-            })
+            });
         }
 
-        const token = payload[this._authProvider.TOKEN_NAME].token;
-        const expiresAt = payload[this._authProvider.TOKEN_NAME].expiresAt;
-        const currentUnixTimeInSeconds = Number((Date.now() / 1000).toFixed(0));
         const JWKS = jose.createRemoteJWKSet(new URL(jwksUrl));
         const { payload: jwtVerifyPayload } = await jose.jwtVerify(token, JWKS);
 
-        if (!((expiresAt ?? Infinity) > currentUnixTimeInSeconds)) {
+        if (this.isExpired(expiresAt)) {
             throw new Error( 'Token already expired!', {
                 cause: {
                     code: 'ERR_JWT_EXPIRED'
@@ -132,7 +114,7 @@ class AuthService {
             });
         }
 
-        if (jwtVerifyPayload.iat && currentUnixTimeInSeconds < jwtVerifyPayload.iat) {
+        if (jwtVerifyPayload.iat && this._getCurrentUnixTimestampInSeconds() < jwtVerifyPayload.iat) {
             throw new Error( 'The Token was issued somewhere in the future!', {
                 cause: {
                     code: 'ERR_JWT_IAT'
@@ -140,7 +122,7 @@ class AuthService {
             });
         }
 
-        if (jwtVerifyPayload.nbf && currentUnixTimeInSeconds < jwtVerifyPayload.nbf) {
+        if (jwtVerifyPayload.nbf && this._getCurrentUnixTimestampInSeconds() < jwtVerifyPayload.nbf) {
             throw new Error('The Token is not yet valid and can not be used!', {
                 cause: {
                     code: 'ERR_JWT_NBF'
@@ -150,9 +132,65 @@ class AuthService {
 
         return {
             id: jwtVerifyPayload.sub,
-            username: jwtVerifyPayload.preferred_username,
+            username: jwtVerifyPayload.name,
             email: jwtVerifyPayload.preferred_username
         };
+    }
+
+    _getCurrentUnixTimestampInSeconds() {
+        return Number((Date.now() / 1000).toFixed(0));
+    }
+
+    isExpired(tokenExpirationInSeconds = null) {
+        if (!((tokenExpirationInSeconds ?? Infinity) > this._getCurrentUnixTimestampInSeconds())) {
+            return true;
+        }
+        return false;
+    }
+
+    async refreshToken(request, response, cachedAccountId = '') {
+        const authenticationResult = await this._authProvider.refresh(request, cachedAccountId);
+        await this._createJWETokenCookie(authenticationResult, response, cachedAccountId);
+    }
+
+    async _createJWETokenCookie(authenticationResult, response, cachedAccountId) {
+        if (!authenticationResult) {
+            throw new Error('Could not acquire token...');
+        }
+
+        const { account, idToken, idTokenClaims } = authenticationResult;
+        const accountId = cachedAccountId ?? account?.homeAccountId;
+
+        if (!accountId) {
+            throw new Error('No MSAL homeAccountId available');
+        }
+
+        const authTokenPayload = new AuthToken();
+        authTokenPayload.setToken(this._authProvider.TOKEN_NAME, { token: idToken, expiresAt: idTokenClaims.exp });
+        authTokenPayload.setUser({
+            id: idTokenClaims.sub,
+            email: idTokenClaims.preferred_username,
+            userName: idTokenClaims.name,
+            homeAccountId: accountId
+        });
+
+        if (!authTokenPayload.isValid()) {
+            throw new Error('invalid auth token payload...');
+        }
+
+        const encrypted = {
+            token: await this._signJWT(idTokenClaims.iss,'login', authTokenPayload),
+            user: authTokenPayload.getUser()
+        }
+
+        // save JWE inside a Cookie
+        response.cookie(this._authProvider.config.tokenCookieName, encrypted.token.token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            //maxAge: encrypted.token.expiresAt, // TODO: I am not sure this is needed or even right value, I think it expects ms instead of s
+            path: '/'
+        });
     }
 }
 

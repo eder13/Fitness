@@ -543,3 +543,7 @@ button:hover {
 .v-hidden {
     visibility: hidden !important;
 }
+
+.d-none {
+    display: none !important;
+}

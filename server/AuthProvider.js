@@ -133,6 +133,54 @@ class AuthProvider {
             return null;
         }
     }
+
+    async logout(request, response) {
+        response.clearCookie(this._config.tokenCookieName, {
+            path: '/'
+        });
+
+        await new Promise((resolve, reject) => {
+            request.session.destroy(err => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+
+                resolve(undefined);
+            });
+        });
+
+        const logoutUri =
+            `${this._config.confidentialClient.auth.authority}` +
+            `${this._config.tenantSubdomain}.onmicrosoft.com` +
+            `/oauth2/v2.0/logout` +
+            `?post_logout_redirect_uri=${encodeURIComponent(
+                this._config.postLogoutURI
+            )}`;
+
+        return logoutUri;
+    }
+
+    async refresh(request, accountId = '') {
+        this._confidentialClient.getTokenCache().deserialize(request.session.tokenCache);
+        const cache = this._confidentialClient.getTokenCache();
+        cache.deserialize(request.session.tokenCache);
+        const account = await cache.getAccountByHomeId(accountId);
+
+        if (!account) {
+            throw new Error('no account in memory');
+        }
+
+        const silentRequest = {
+            account,
+            scopes: ["profile", "openid", "email", "User.Read"],
+            forceRefresh: true
+        };
+
+        const tokenResponse = await this._confidentialClient.acquireTokenSilent(silentRequest);
+        request.session.tokenCache = this._confidentialClient.getTokenCache().serialize();
+        return tokenResponse;
+    }
 }
 
 module.exports = AuthProvider;
