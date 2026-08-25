@@ -1,3 +1,9 @@
+// @ts-check
+/*jshint esversion: 6 */
+
+var Config = require("./Config");
+var config = new Config();
+
 function convertExpirationTimeFromMinutesToSeconds(timeMinutes = '60m') {
     const regex = /^(\d+|\d+\.\d+)(m|mins|minutes|minute|min)/;
     const match = regex.exec(timeMinutes);

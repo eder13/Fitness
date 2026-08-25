@@ -517,19 +517,19 @@ function startServer() {
 		resave: false,
 		saveUninitialized: true,
 		cookie: {
-			domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+			//domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
 			httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
-			sameSite: 'lax', // default; adjusted per request below
+			//sameSite: 'lax', // default; adjusted per request below
 			path: '/'
 		}
 	}));
 	application.use(express.urlencoded({ extended: false }));
 	application.use(cookieParser());
-	application.use((req, _, next) => {
+	/* application.use((req, _, next) => {
 		req.session.cookie.sameSite = isAppRequest(req) ? 'none' : 'lax';
 		next();
-	});
+	}); */
 
 	// helper functions
 	function getOrCreateCsrfToken(req, res) {
