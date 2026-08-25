@@ -23,6 +23,7 @@ var AuthConfig = require('./server/authConfig');
 var cookieParser = require('cookie-parser');
 var crypto = require('crypto');
 var { isAppRequest } = require('./server/helpers');
+var escape = require('lodash/escape');
 
 
 //MODULE INITS
@@ -550,6 +551,11 @@ function startServer() {
 		return csrfTokenValue;
 	}
 
+	function getAllowedRedirectTo(redirectTo = '/') {
+		const allowedRedirects = new Set(['/']);
+		return allowedRedirects.has(redirectTo) ? redirectTo : '/';
+	}
+
 	function refreshOnce(req, accountId, refreshFunction) {
 		const key = `${req.sessionID}:${accountId}`;
 		const existingJob = refreshJobs.get(key);
@@ -687,10 +693,16 @@ function startServer() {
 		const state =
             {
 				stage: authProvider.config.flows.signUpSignIn, // flow, in this case sign in and sign up flow created in Entra ID Dashboard
-                redirectTo: '/',
-                nonce: req.session.nonce,
-				isApp: isAppRequest(req)
-            };
+					redirectTo: '/',
+	                nonce: req.session.nonce,
+					isApp: isAppRequest(req)
+	            };
+		req.session.authState = {
+			stage: state.stage,
+			redirectTo: getAllowedRedirectTo(state.redirectTo),
+			nonce: state.nonce,
+			isApp: state.isApp
+		};
         
 		res.json({
 			authUrl: await authProvider.getAuthUrl(req, state, {
@@ -712,7 +724,15 @@ function startServer() {
 			}
 
 			const decodedState = JSON.parse(authProvider.base64Decode(req.body.state));
-			const { stage, nonce, redirectTo, isApp } = decodedState;
+			const sessionAuthState = req.session.authState;
+			const { nonce } = decodedState;
+			const stage = sessionAuthState?.stage ?? 'unknown';
+			const redirectTo = sessionAuthState?.redirectTo ?? '/';
+			const isApp = sessionAuthState?.isApp ?? false;
+
+			if (!sessionAuthState || !sessionAuthState.nonce || !sessionAuthState.stage) {
+				throw new Error('Authentication state was lost', { cause: { stage, isApp } });
+			}
 
 			if (req.query.error || req.body.error) {
 				throw new Error(req.query.error ?? req.body.error, { cause: {
@@ -721,14 +741,14 @@ function startServer() {
 				}});
 			}
 			
-			if (req.session.nonce !== nonce) {
+			if (req.session.nonce !== nonce || sessionAuthState.nonce !== nonce) {
 				throw new Error('nonce check failed', { cause: {
 					stage,
 					isApp
 				}});
 			}
 
-			await authService.callback(req, res, stage, req.body.code, decodedState);
+			await authService.callback(req, res, stage, req.body.code, sessionAuthState);
 			res.redirect(redirectTo);
 		} catch (e) {
 			let error = e;
@@ -741,8 +761,9 @@ function startServer() {
 				stage = e.cause?.stage ?? stage;
 			}
 
-			const errorMessage = typeof error === 'string' ? e : JSON.stringify(error);
-			const errorRedirectWeb = `<meta http-equiv="refresh" content="3;url=/?error=true&message=${errorMessage}&flow=${stage}"></meta>`;
+			const errorMessage = typeof error === 'string' ? error : JSON.stringify(error);
+			const errorMessageHtml = escape(errorMessage ?? 'Authentication failed');
+			const errorRedirectWeb = `<meta http-equiv="refresh" content="3;url=/?error=true&message=${encodeURIComponent(errorMessage ?? 'Authentication failed')}&flow=${encodeURIComponent(stage)}"></meta>`;
 
             res.send(
 			`
@@ -759,7 +780,7 @@ function startServer() {
 									: '<h1>Error during Authentication. Redirecting to Home.</h1>'
 							}
 							<p>
-								${errorMessage}
+									${errorMessageHtml}
 							</p>
 						</body>
 					</html>

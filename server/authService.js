@@ -42,6 +42,24 @@ class AuthService {
             throw new Error('ID token nonce validation failed');
         }
 
+        // Rotate the session after successful authentication to prevent session fixation.
+        // Only retain the MSAL cache needed for silent refresh. Do not carry over the
+        // nonce, PKCE values, or authorization request into the authenticated session.
+        const tokenCache = request.session.tokenCache;
+        await new Promise((resolve, reject) => {
+            request.session.regenerate(error => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                if (tokenCache) {
+                    request.session.tokenCache = tokenCache;
+                }
+                resolve();
+            });
+        });
+
         await this._createJWETokenCookie(authenticationResult, response, undefined, isAppRequest(request));
     }
 
