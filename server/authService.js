@@ -42,9 +42,6 @@ class AuthService {
             throw new Error('ID token nonce validation failed');
         }
 
-        // Nonce is only used for login callback and then discarded
-        delete request.session.nonce;
-
         await this._createJWETokenCookie(authenticationResult, response);
     }
 
