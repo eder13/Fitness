@@ -511,6 +511,7 @@ function startServer() {
 	// use
 	application.use('/', express.static(__dirname + '/client'));
 	application.use('/client', express.static(__dirname + '/client'));
+	// TODO: don't use request.session -> use a separate cookie instead that is encrypted so that I can send it to the app client (cross site cookie)
 	application.use(session({
 		name: 'fitness_caf_session',
 		secret: process.env.SESSION_COOKIE_SECRET,
