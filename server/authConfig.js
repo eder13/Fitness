@@ -21,7 +21,7 @@ function AuthConfig() {
                     if (containsPii) {
                         return;
                     }
-                    logFile.log(message, true, 1);
+                    logFile.log(message, true, 0);
                 },
                 piiLoggingEnabled: false,
             },

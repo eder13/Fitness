@@ -26,6 +26,25 @@ class AuthService {
 
     async login(request, response, code = '', decodedState = {}) {
         const authenticationResult = await this._authProvider.login(request, code, decodedState);
+
+        if (!authenticationResult?.idTokenClaims) {
+            throw new Error('No valid authentication result');
+        }
+
+        const expectedNonce = request.session.nonce;
+        const receivedNonce = authenticationResult.idTokenClaims.nonce;
+
+        if (
+            !expectedNonce ||
+            !receivedNonce ||
+            expectedNonce !== receivedNonce
+        ) {
+            throw new Error('ID token nonce validation failed');
+        }
+
+        // Nonce is only used for login callback and then discarded
+        delete request.session.nonce;
+
         await this._createJWETokenCookie(authenticationResult, response);
     }
 
@@ -148,12 +167,23 @@ class AuthService {
         return false;
     }
 
-    async refreshToken(request, response, cachedAccountId = '') {
+    async refreshToken(request, cachedAccountId = '') {
         const authenticationResult = await this._authProvider.refresh(request, cachedAccountId);
-        await this._createJWETokenCookie(authenticationResult, response, cachedAccountId);
+        return await this._createJWETokenCookieValue(authenticationResult, cachedAccountId);
     }
 
     async _createJWETokenCookie(authenticationResult, response, cachedAccountId) {
+        const cookieValue = await this._createJWETokenCookieValue(
+            authenticationResult,
+            cachedAccountId
+        );
+
+        this.setAuthCookie(response, cookieValue);
+
+        return cookieValue;
+    }
+
+    async _createJWETokenCookieValue(authenticationResult, cachedAccountId) {
         if (!authenticationResult) {
             throw new Error('Could not acquire token...');
         }
@@ -183,15 +213,19 @@ class AuthService {
             user: authTokenPayload.getUser()
         }
 
-        // save JWE inside a Cookie
-        response.cookie(this._authProvider.config.tokenCookieName, encrypted.token.token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            //maxAge: encrypted.token.expiresAt, // TODO: I am not sure this is needed or even right value, I think it expects ms instead of s
-            path: '/'
-        });
+        return encrypted.token.token;
     }
+
+    // save JWE inside a Cookie
+    setAuthCookie(res, cookieValue) {
+		res.cookie(this._authProvider.config.tokenCookieName, cookieValue, {
+			httpOnly: true,
+			secure: process.env.NODE_ENV === 'production',
+			sameSite: 'lax',
+            //maxAge: TODO - "Remember Me" Login functionality
+			path: '/'
+		});
+	}
 }
 
 module.exports = AuthService;

@@ -21,6 +21,7 @@ let Common = require("./client/js/common");
 let EmailManager = require("./server/EmailManager");
 var AuthConfig = require('./server/authConfig');
 var cookieParser = require('cookie-parser');
+var crypto = require('crypto');
 
 
 //MODULE INITS
@@ -519,12 +520,64 @@ function startServer() {
 	application.use(express.urlencoded({ extended: false }));
 	application.use(cookieParser());
 
+	// helper functions
 	function isAppRequest(request) {
 		return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
+	}
+	function getOrCreateCsrfToken(req) {
+		if (!req.session.csrfToken) {
+			req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+		}
+
+		return req.session.csrfToken;
+	}
+
+	function csrfProtection(req, res, next) {
+		const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
+
+		if (safeMethods.includes(req.method)) {
+			return next();
+		}
+
+		// Entra posts the OIDC callback directly and cannot send our header.
+		if (req.path === '/signin' || req.path === '/auth/callback') {
+			return next();
+		}
+
+		const receivedToken = req.get('X-CSRF-Token');
+
+		if (!receivedToken || receivedToken !== req.session.csrfToken) {
+			return res.status(403).json({
+				code: 'ERR_CSRF_INVALID'
+			});
+		}
+
+		next();
+	}
+
+	function refreshOnce(req, accountId, refreshFunction) {
+		const key = `${req.sessionID}:${accountId}`;
+		const existingJob = refreshJobs.get(key);
+
+		if (existingJob) {
+			return existingJob;
+		}
+
+		const job = Promise.resolve()
+			.then(refreshFunction)
+			.finally(() => {
+				if (refreshJobs.get(key) === job) {
+					refreshJobs.delete(key);
+				}
+			});
+
+		refreshJobs.set(key, job);
+		return job;
 	}
 	const authConfig = new AuthConfig();
 	const authProvider = new AuthProvider();
 	const authService = new AuthService(authProvider);
+	const refreshJobs = new Map();
 
 	// middleware
 	async function authenticate(req, res, next) {
@@ -553,12 +606,17 @@ function startServer() {
 	}
 
 	// controller
+	application.get('/csrf-token', (req, res) => {
+		res.json({
+			csrfToken: getOrCreateCsrfToken(req)
+		});
+	});
 	application.get('/profile', authenticate, (req, res) => {
 		res.json({ 
 			user: req.user
 		});
 	});
-	application.post('/profile/refresh', async (req, res, next) => {
+	application.post('/profile/refresh', csrfProtection, async (req, res, next) => {
 		try {
 			const jwe = req.cookies?.[authConfig.tokenCookieName];
 
@@ -586,11 +644,13 @@ function startServer() {
 				});
 			}
 
-			await authService.refreshToken(
+			const cookieValue = await refreshOnce(
 				req,
-				res,
-				user.homeAccountId
+				user.homeAccountId,
+				() => authService.refreshToken(req, user.homeAccountId)
 			);
+
+			authService.setAuthCookie(res, cookieValue);
 
 			return res.status(200).json({
 				success: true
@@ -624,9 +684,9 @@ function startServer() {
 			})
 		});
 	});
-	application.post('/signout', async function (req, res) {
+	application.post('/signout', csrfProtection, async function (req, res) {
 		const logoutEndpoint = await authService.logout(req, res);
-		res.redirect(logoutEndpoint);
+		res.json({ logoutEndpoint });
 	});
 	application.post('/auth/callback', async function(req, res) {
 		try {
