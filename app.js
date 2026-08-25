@@ -22,6 +22,7 @@ let EmailManager = require("./server/EmailManager");
 var AuthConfig = require('./server/authConfig');
 var cookieParser = require('cookie-parser');
 var crypto = require('crypto');
+var { isAppRequest } = require('./server/helpers');
 
 
 //MODULE INITS
@@ -44,6 +45,8 @@ var PLAYER_LIST = {};
 var FITNESS_MANAGER = new FitnessManager();
 var DB_TOKEN = config.DB_TOKEN;
 var ONLINE_STATE = {};
+var CSRF_TOKEN_COOKIE_NAME = 'fitness_csrf';
+
 
 
 var OnPlayerConnection;
@@ -501,58 +504,49 @@ function saveDataStorage() {
 
 
 function startServer() {
+	if (!process.env.SESSION_COOKIE_SECRET) {
+		process.exit(1);
+	}
+
 	// use
 	application.use('/', express.static(__dirname + '/client'));
 	application.use('/client', express.static(__dirname + '/client'));
-	application.use(
-		session({
-			name: 'fitness_caf_session',
-			secret: process.env.SESSION_COOKIE_SECRET ?? '',
-			resave: false,
-			saveUninitialized: true,
-			cookie: {
-				path: '/',
-				httpOnly: true,
-				secure: process.env.NODE_ENV === 'production',
-			},
-		})
-	);
+	application.use(session({
+		name: 'fitness_caf_session',
+		secret: process.env.SESSION_COOKIE_SECRET,
+		resave: false,
+		saveUninitialized: true,
+		cookie: {
+			domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+			httpOnly: true,
+			secure: process.env.NODE_ENV === 'production',
+			sameSite: 'lax', // default; adjusted per request below
+			path: '/'
+		}
+	}));
 	application.use(express.urlencoded({ extended: false }));
 	application.use(cookieParser());
+	application.use((req, _, next) => {
+		req.session.cookie.sameSite = isAppRequest(req) ? 'none' : 'lax';
+		next();
+	});
 
 	// helper functions
-	function isAppRequest(request) {
-		return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
-	}
-	function getOrCreateCsrfToken(req) {
-		if (!req.session.csrfToken) {
-			req.session.csrfToken = crypto.randomBytes(32).toString('hex');
-		}
+	function getOrCreateCsrfToken(req, res) {
+		let csrfTokenValue = req.cookies?.[CSRF_TOKEN_COOKIE_NAME];
 
-		return req.session.csrfToken;
-	}
-
-	function csrfProtection(req, res, next) {
-		const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
-
-		if (safeMethods.includes(req.method)) {
-			return next();
-		}
-
-		// Entra posts the OIDC callback directly and cannot send our header.
-		if (req.path === '/signin' || req.path === '/auth/callback') {
-			return next();
-		}
-
-		const receivedToken = req.get('X-CSRF-Token');
-
-		if (!receivedToken || receivedToken !== req.session.csrfToken) {
-			return res.status(403).json({
-				code: 'ERR_CSRF_INVALID'
+		if(!csrfTokenValue) {
+			csrfTokenValue = crypto.randomBytes(32).toString('hex');
+			res.cookie(CSRF_TOKEN_COOKIE_NAME, csrfTokenValue, {
+				domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+				httpOnly: true,
+				secure: process.env.NODE_ENV === 'production',
+				sameSite: isAppRequest(req) ? 'none' : 'lax',
+				path: '/'
 			});
 		}
 
-		next();
+		return csrfTokenValue;
 	}
 
 	function refreshOnce(req, accountId, refreshFunction) {
@@ -579,7 +573,29 @@ function startServer() {
 	const authService = new AuthService(authProvider);
 	const refreshJobs = new Map();
 
-	// middleware
+	// middleware functions
+	function csrfProtection(req, res, next) {
+		const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
+
+		if (safeMethods.includes(req.method)) {
+			return next();
+		}
+
+		// Entra posts the OIDC callback directly and cannot send our header.
+		if (req.path === '/signin' || req.path === '/auth/callback') {
+			return next();
+		}
+
+		const receivedToken = req.get('X-CSRF-Token');
+
+		if (!receivedToken || receivedToken !== req.cookies?.[CSRF_TOKEN_COOKIE_NAME]) {
+			return res.status(403).json({
+				code: 'ERR_CSRF_INVALID'
+			});
+		}
+
+		next();
+	}
 	async function authenticate(req, res, next) {
 		try {
 			const jwe = req.cookies?.[authConfig.tokenCookieName];
@@ -608,7 +624,7 @@ function startServer() {
 	// controller
 	application.get('/csrf-token', (req, res) => {
 		res.json({
-			csrfToken: getOrCreateCsrfToken(req)
+			csrfToken: getOrCreateCsrfToken(req, res)
 		});
 	});
 	application.get('/profile', authenticate, (req, res) => {
@@ -650,7 +666,7 @@ function startServer() {
 				() => authService.refreshToken(req, user.homeAccountId)
 			);
 
-			authService.setAuthCookie(res, cookieValue);
+			authService.setAuthCookie(res, cookieValue, isAppRequest(req));
 
 			return res.status(200).json({
 				success: true

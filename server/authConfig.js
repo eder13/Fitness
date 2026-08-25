@@ -10,8 +10,8 @@ const logFile = new Log();
 function AuthConfig() {
     this.confidentialClient = {
         auth: {
-            clientId: process.env.MSAL_APP_CLIENT_ID ?? '',
-            clientSecret: process.env.MSAL_CLIENT_SECRET ?? '',
+            clientId: process.env.MSAL_APP_CLIENT_ID,
+            clientSecret: process.env.MSAL_CLIENT_SECRET,
             authority: `https://${process.env.MSAL_DOMAIN_NAME}.ciamlogin.com/`,
             authorityMetadata: ''
         },
@@ -29,11 +29,15 @@ function AuthConfig() {
     };
 
     this.flows = {
-        signUpSignIn: process.env.SIGN_UP_SIGN_IN_FLOW ?? 'signIn'
+        signUpSignIn: process.env.SIGN_UP_SIGN_IN_FLOW
     }; 
-
-    this.tenantSubdomain = process.env.MSAL_DOMAIN_NAME ?? '';
-    this.tokenSecret = process.env.TOKEN_SECRET ?? 'this_has_to_be_exactly_32_chars_';
+    
+    if (!process.env.TOKEN_SECRET) {
+        process.exit(1);
+    }
+    
+    this.tenantSubdomain = process.env.MSAL_DOMAIN_NAME;
+    this.tokenSecret = process.env.TOKEN_SECRET;
     this.tokenExpirationTime = process.env.TOKEN_EXPIRATION_TIME_MINUTES ?? '60m';
     this.tokenCookieName = process.env.TOKEN_COOKIE_NAME ?? 'f_t';
     this.redirectURI = process.env.REDIRECT_URI ?? `http://localhost:${process.env.PORT || config.LOCAL_PORT}/auth/callback`;

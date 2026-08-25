@@ -3,7 +3,7 @@
 
 const AuthToken = require('./AuthToken');
 const jose = require('jose');
-const { convertExpirationTimeFromMinutesToSeconds } = require('./helpers');
+const { convertExpirationTimeFromMinutesToSeconds, isAppRequest } = require('./helpers');
 
 class AuthService {
     _authProvider;
@@ -42,7 +42,7 @@ class AuthService {
             throw new Error('ID token nonce validation failed');
         }
 
-        await this._createJWETokenCookie(authenticationResult, response);
+        await this._createJWETokenCookie(authenticationResult, response, undefined, isAppRequest(request));
     }
 
     async logout(request, response) {
@@ -169,13 +169,13 @@ class AuthService {
         return await this._createJWETokenCookieValue(authenticationResult, cachedAccountId);
     }
 
-    async _createJWETokenCookie(authenticationResult, response, cachedAccountId) {
+    async _createJWETokenCookie(authenticationResult, response, cachedAccountId, isApp = false) {
         const cookieValue = await this._createJWETokenCookieValue(
             authenticationResult,
             cachedAccountId
         );
 
-        this.setAuthCookie(response, cookieValue);
+        this.setAuthCookie(response, cookieValue, isApp);
 
         return cookieValue;
     }
@@ -214,11 +214,12 @@ class AuthService {
     }
 
     // save JWE inside a Cookie
-    setAuthCookie(res, cookieValue) {
+    setAuthCookie(res, cookieValue, isApp = false) {
 		res.cookie(this._authProvider.config.tokenCookieName, cookieValue, {
-			httpOnly: true,
+            domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+            httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
-			sameSite: 'lax',
+			sameSite: isApp ? 'none' : 'lax',
             //maxAge: TODO - "Remember Me" Login functionality
 			path: '/'
 		});

@@ -5,6 +5,11 @@ function convertExpirationTimeFromMinutesToSeconds(timeMinutes = '60m') {
     return Math.round(value * 60);
 }
 
+function isAppRequest(request) {
+    return request.get('User-Agent')?.includes(config.APP_USER_AGENT_STRING);
+}
+
 module.exports = {
-    convertExpirationTimeFromMinutesToSeconds
+    convertExpirationTimeFromMinutesToSeconds,
+    isAppRequest
 }
