@@ -1,6 +1,8 @@
 // @ts-check
 /*jshint esversion: 6 */
 
+var crypto = require('crypto');
+
 function Config() {
 
     //BASE PREFS
@@ -21,7 +23,7 @@ function Config() {
     this.POINTS_FOR_POWERFACTOR = 500;
     this.POWER_FACTOR_ACTIVE = 0;
     this.EVENTLOG_MAX = 1200;
-    this.APP_USER_AGENT_STRING = process.env.APP_USER_AGENT_STRING;
+    this.APP_USER_AGENT_STRING = process.env.APP_USER_AGENT_STRING ?? `not_set_${crypto.randomUUID().toString()}`;
 }
 
 module.exports = Config;
