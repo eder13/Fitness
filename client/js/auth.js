@@ -1,12 +1,18 @@
 /* jshint esversion: 6 */
 
-// Autologin, CSRF protection and token refreshing
+// CSRF protection and token refreshing
 $(function () {
     let csrfToken = null;
 
     function showLoginForm() {
         $('#login__form').removeClass('v-hidden');
     }
+
+    window.showLoginError = function (message) {
+        const error = $('#login__form-error');
+        error.text(message || 'Die Anmeldung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.');
+        error.removeClass('v-hidden');
+    };
 
     function showAccountInfo(json) {
         $('#account-info').removeClass('v-hidden');
@@ -44,7 +50,6 @@ $(function () {
 
         if (!errorCode.includes('expire')) {
             showLoginForm();
-            console.error('Could not load profile:', errorThrown);
             return;
         }
 
@@ -54,7 +59,7 @@ $(function () {
             .done(function (refreshResponse) {
                 if (!refreshResponse.success) {
                     showLoginForm();
-                    console.error('Could not refresh token, re-auth needed');
+                    showLoginError('Ihre Anmeldung ist abgelaufen. Bitte melden Sie sich erneut an.');
                     return;
                 }
 
@@ -64,23 +69,27 @@ $(function () {
                     })
                     .fail(function (profileXhr, profileTextStatus, profileError) {
                         showLoginForm();
-                        console.error(
-                            'Could not load profile after token refresh:',
-                            profileXhr.responseJSON || profileError
-                        );
+                        showLoginError('Die Anmeldung konnte nicht erneuert werden. Bitte melden Sie sich erneut an.');
                     });
             })
             .fail(function (refreshXhr, refreshTextStatus, refreshError) {
                 showLoginForm();
-                console.error(
-                    'Could not refresh token, re-auth needed:',
-                    refreshXhr.responseJSON || refreshError
-                );
+                showLoginError('Die Anmeldung konnte nicht erneuert werden. Bitte melden Sie sich erneut an.');
             });
     }
 
-    // The logout form is a cookie-authenticated POST and therefore needs the CSRF header.
     $('#logout__form').on('submit', function (event) {
+        event.preventDefault();
+
+        csrfAjax({
+            url: '/signout',
+            method: 'POST'
+        }).done(function (response) {
+            window.location.href = response.logoutEndpoint;
+        });
+    });
+
+    $('#logout__form-logged-in').on('submit', function (event) {
         event.preventDefault();
 
         csrfAjax({
@@ -104,6 +113,13 @@ $(function () {
         })
         .fail(function (xhr, textStatus, errorThrown) {
             showLoginForm();
-            console.error('Could not obtain CSRF token:', errorThrown);
+            showLoginError('Der Login-Dienst ist derzeit nicht erreichbar. Bitte versuchen Sie es später erneut.');
         });
+
+    if (typeof SOCKET !== 'undefined') {
+        SOCKET.on('connect_error', function () {
+            showLoginForm();
+            showLoginError('Die Anmeldung konnte nicht geprüft werden. Bitte melden Sie sich erneut an.');
+        });
+    }
 });

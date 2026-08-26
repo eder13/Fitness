@@ -777,7 +777,9 @@
 			<input id="input_onlineIndicator" type="textbox" disabled="true">
 			<a href="https://trello.com/invite/b/aZfDB1r0/d9bb40353771097cb89993e31baef54b/fitnessapp"
 				target="_blank">Feedback</a>
-			<a href="#" id="button_logOut" onclick="logout();">Ausloggen</a>
+			<form style="display: inline-block;" id="logout__form-logged-in" method="post" action="/signout">
+				<button style="color: red; padding: 4px; width: 100%;" id="logout__form-logged-in-btn" type="submit">logout</button>
+			</form>
 		</div>
 	</footer>
 

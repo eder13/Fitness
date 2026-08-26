@@ -9,7 +9,6 @@ var session = require('express-session');
 var application = express();
 var http = require("http");
 var JSONFileStorage = require('jsonfile-storage');
-var pwHash = require('password-hash');
 var Config = require("./server/Config");
 var AuthProvider = require('./server/AuthProvider');
 var AuthService = require('./server/authService');
@@ -52,9 +51,6 @@ var CSRF_TOKEN_COOKIE_NAME = 'fitness_csrf';
 
 var OnPlayerConnection;
 var OnSocketConnection;
-var isValidPassword;
-var isUsernameTaken;
-var addUser;
 
 
 loadSaveFiles(function (loadSaveFilesResult) {
@@ -598,6 +594,30 @@ function startServer() {
 
 		next();
 	}
+	function getCookieValue(cookieHeader, name) {
+		if (!cookieHeader) return undefined;
+		const prefix = `${name}=`;
+		const cookie = cookieHeader.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
+		return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : undefined;
+	}
+	async function authenticateSocket(socket, next) {
+		try {
+			const jwe = getCookieValue(socket.handshake.headers.cookie, authConfig.tokenCookieName);
+			if (!jwe) return next(new Error('AUTHENTICATION_REQUIRED'));
+
+			const { token, expiresAt } = await authService.decryptJWE(jwe);
+			const user = await authService.validateToken(token, expiresAt);
+			if (!user?.username || !user?.id || !user?.email) {
+				return next(new Error('AUTHENTICATION_REQUIRED'));
+			}
+
+			socket.user = user;
+			next();
+		} catch (error) {
+			console.error('Socket authentication failed:', error);
+			next(new Error('AUTHENTICATION_REQUIRED'));
+		}
+	}
 	async function authenticate(req, res, next) {
 		try {
 			const jwe = req.cookies?.[authConfig.tokenCookieName];
@@ -674,12 +694,15 @@ function startServer() {
 				success: true
 			});
 		} catch (e) {
-			console.error(e);
+			console.error('Token refresh failed:', e);
 			
 			res.clearCookie(authProvider.config.tokenCookieName, {
 				path: '/'
 			});
-			next(e);
+			return res.status(503).json({
+				code: 'ERR_AUTH_REFRESH_FAILED',
+				message: 'Die Anmeldung konnte nicht erneuert werden. Bitte melden Sie sich erneut an.'
+			});
 		}
 	});
 	application.post('/signin', async function(req, res) {
@@ -747,19 +770,17 @@ function startServer() {
 			await authService.callback(req, res, stage, req.body.code, sessionAuthState);
 			res.redirect(redirectTo);
 		} catch (e) {
-			let error = e;
 			let isApp = false;
 			let stage = 'unknown';
 
 			if (e instanceof Error) {
-				error = e.message;
 				isApp = e.cause?.isApp;
 				stage = e.cause?.stage ?? stage;
 			}
 
-			const errorMessage = typeof error === 'string' ? error : JSON.stringify(error);
-			const errorMessageHtml = escape(errorMessage ?? 'Authentication failed');
-			const errorRedirectWeb = `<meta http-equiv="refresh" content="3;url=/?error=true&message=${encodeURIComponent(errorMessage ?? 'Authentication failed')}&flow=${encodeURIComponent(stage)}"></meta>`;
+			const errorMessage = 'Die Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.';
+			const errorMessageHtml = escape(errorMessage);
+			const errorRedirectWeb = `<meta http-equiv="refresh" content="3;url=/?error=true&message=${encodeURIComponent(errorMessage)}&flow=${encodeURIComponent(stage)}"></meta>`;
 
             res.send(
 			`
@@ -787,6 +808,7 @@ function startServer() {
 
 	server.listen(process.env.PORT || config.LOCAL_PORT);
 	logFile.log("Started Server", true, 0);
+	io.use(authenticateSocket);
 
 	io.sockets.on('connection', function (socket) {
 		OnSocketConnection(socket);
@@ -1114,87 +1136,39 @@ function startServer() {
 		});
 
 
-		//someone signs in
-		socket.on('SignIn', function (data) {
-			isValidPassword(data, function (checkPasswortResult) {
-				if (checkPasswortResult.success) {
-					if (USERS[checkPasswortResult.username.toUpperCase()].allowEmail == undefined) {
-						USERS[checkPasswortResult.username.toUpperCase()].allowEmail = false;
-					}
-					if (USERS[checkPasswortResult.username.toUpperCase()].email == undefined) {
-						USERS[checkPasswortResult.username.toUpperCase()].email = "Nichts hinterlegt.";
-					}
-					FITNESS_MANAGER.addToEventLog(checkPasswortResult.username + " hat sich angemeldet!");
-					OnPlayerConnection(socket);
-					loadPlayer(checkPasswortResult.username, socket.id, function (loadPlayerResult) {
-						logFile.log(loadPlayerResult, false, 0);
-						socket.emit('signInResponse', {
-							success: true,
-							name: checkPasswortResult.username,
-							profileData: {
-								color: USERS[PLAYER_LIST[socket.id].name.toUpperCase()].color,
-								allowEmail: USERS[PLAYER_LIST[socket.id].name.toUpperCase()].allowEmail,
-								email: USERS[PLAYER_LIST[socket.id].name.toUpperCase()].email,
-								hideInactivePlayers: USERS[PLAYER_LIST[socket.id].name.toUpperCase()].hideInactivePlayers
-							}
-						});
-					});
+		const username = socket.user.username;
+		const userKey = username.toUpperCase();
 
-					FITNESS_MANAGER.colorList[checkPasswortResult.username] = USERS[checkPasswortResult.username.toUpperCase()].color;
-					ONLINE_STATE[checkPasswortResult.username] = true;
+		console.log('#####** username', username);
 
-				}
-				else {
-					socket.emit('signInResponse', { success: false, name: checkPasswortResult.username });
-				}
-				if (data.remember && USERS[checkPasswortResult.username.toUpperCase()]) {
-					socket.emit('loginToken', { data: USERS[checkPasswortResult.username.toUpperCase()].loginToken });
-				}
+		const userRecord = USERS[userKey] || (USERS[userKey] = {
+			email: socket.user.email,
+			allowEmail: false,
+			hideInactivePlayers: false,
+			color: '#777777'
+		});
+		userRecord.email = userRecord.email || socket.user.email;
+		userRecord.allowEmail = userRecord.allowEmail === true;
+		userRecord.hideInactivePlayers = userRecord.hideInactivePlayers === true;
 
+		FITNESS_MANAGER.addToEventLog(username + " hat sich angemeldet!");
+		OnPlayerConnection(socket);
+		loadPlayer(username, socket.id, function (loadPlayerResult) {
+			logFile.log(loadPlayerResult, false, 0);
+			socket.emit('authenticated', {
+				success: true,
+				name: username,
+				profileData: {
+					color: userRecord.color,
+					allowEmail: userRecord.allowEmail,
+					email: userRecord.email,
+					hideInactivePlayers: userRecord.hideInactivePlayers
+				}
 			});
-
 		});
 
-		//someone signs up
-		socket.on('SignUp', function (data) {
-			let secret_check = false
-			let username_check = false
-
-			if (data.username != undefined &&
-				data.username.length >= 3 &&
-				data.username != " " &&
-				data.username != "  " &&
-				data.username != "   "
-			) {
-				username_check = true
-			}
-
-			if (data.secret === "thisisthespecialgagssecretandyoucantregisterwithoutit") {
-				secret_check = true
-			}
-			if (username_check && secret_check) {
-
-				isUsernameTaken(data, function (res) {
-					if (res) {
-						socket.emit('signUpResponse', { success: false });
-						socket.on("Name", function (data) {
-							socket.emit("getName", PLAYER_LIST[socket.id].name);
-						});
-					}
-					else {
-						addUser(data, function () {
-							socket.emit('signUpResponse', { success: true });
-						});
-					}
-				});
-
-			}
-			else {
-
-				socket.emit('alertMsg', { data: 'Username "' + data.username + '" ist nicht gültig oder Registrierungsschlüssel falsch.' });
-			}
-
-		});
+		FITNESS_MANAGER.colorList[username] = userRecord.color;
+		ONLINE_STATE[username] = true;
 
 		//someone disconnects
 		socket.on('disconnect', function () {
@@ -1224,130 +1198,6 @@ function startServer() {
 		});
 
 
-	};
-
-
-
-	/**
-	 * 
-	 * @param {{loginToken,username,password}} data username and password
-	 * @param {any} cb 
-	 */
-
-	isValidPassword = function (data, cb) {
-		setTimeout(function () {
-			//If password is correct, create login token if not available
-			if (data.loginToken != undefined) {
-				//autoLogin
-				for (let name in USERS) {
-					if (data.loginToken == USERS[name].loginToken) {
-						for (let playerId in PLAYER_LIST) {
-							if (PLAYER_LIST[playerId].name == name) {
-
-								SOCKET_LIST[playerId].disconnect(true);
-
-								cb({
-									success: true, //ASS
-									username: name,
-								});
-								return;
-							}
-						}
-						cb({
-							success: true,
-							username: name.toLowerCase(),
-						});
-						return;
-					}
-
-				}
-				cb({
-					success: false,
-					username: "",
-				});
-
-			}
-			else {
-				for (let playerId in PLAYER_LIST) {
-					try {
-						if (PLAYER_LIST[playerId].name == data.username) {
-							if (SOCKET_LIST[playerId] != undefined) {
-								if (SOCKET_LIST[playerId].disconnect != undefined) {
-									SOCKET_LIST[playerId].disconnect(true);
-									cb({
-										success: true,
-										username: data.username,
-									});
-								}
-							}
-							return;
-						}
-					}
-					catch (e) {
-						logFile.log("user not available", true, 0);
-					}
-				}
-				try {
-					if (USERS[data.username.toUpperCase()].password == undefined && pwHash.verify(data.password, USERS[data.username.toUpperCase()])) {
-						USERS[data.username.toUpperCase()] = {
-							password: USERS[data.username.toUpperCase()],
-							loginToken: pwHash.generate(data.username + data.password),
-						};
-
-					}
-					cb({
-						success: pwHash.verify(data.username + data.password, USERS[data.username.toUpperCase()].loginToken),
-						username: data.username,
-					});
-				}
-				catch (e) {
-					cb({
-						success: false,
-						username: "",
-					});
-				}
-
-			}
-
-		}, 250);
-	};
-
-	/**
-	 * 
-	 * @param {{username}} data username and password
-	 * @param {any} cb 
-	 */
-	isUsernameTaken = function (data, cb) {
-		setTimeout(function () {
-			cb(USERS[data.username.toUpperCase()]);
-		}, 10);
-	};
-
-	/**
-	 * 
-	 * @param {{username,password}} data username and password
-	 * @param {any} cb 
-	 */
-	addUser = function (data, cb) {
-		FITNESS_MANAGER.addNewPlayer(data.username);
-		setTimeout(function () {
-			var letters = '0123456789abcdef';
-			var color = '#';
-			for (var i = 0; i < 6; i++) {
-				color += letters[Math.floor(Math.random() * 16)];
-			}
-
-			USERS[data.username.toUpperCase()] = {
-				password: pwHash.generate(data.password),
-				loginToken: pwHash.generate(data.username + data.password),
-				color: color,
-				email: "Nichts hinterlegt",
-				allowEmail: false
-			};
-			FITNESS_MANAGER.needsUpload.dataStorage = true;
-			cb();
-		}, 10);
-		logFile.log(data.username + " was added to USERS", true, 0);
 	};
 
 
