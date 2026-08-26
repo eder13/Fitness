@@ -519,6 +519,7 @@ function startServer() {
 		resave: false,
 		saveUninitialized: true,
 		cookie: {
+			domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
 			httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
 			path: '/'
@@ -687,10 +688,11 @@ function startServer() {
 		const state =
             {
 				stage: authProvider.config.flows.signUpSignIn, // flow, in this case sign in and sign up flow created in Entra ID Dashboard
-					redirectTo: '/',
-	                nonce: req.session.nonce,
-					isApp: isAppRequest(req)
-	            };
+				redirectTo: '/',
+				nonce: req.session.nonce,
+				isApp: isAppRequest(req)
+			};
+	
 		req.session.authState = {
 			stage: state.stage,
 			redirectTo: getAllowedRedirectTo(state.redirectTo),
