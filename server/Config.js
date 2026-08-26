@@ -4,6 +4,7 @@
 function Config() {
 
     //BASE PREFS
+    this.DOMAIN = process.env.DOMAIN ?? 'localhost';
     this.LOCAL_PORT = 2000;
     this.ID_LENGTH = 16;
     this.INTERVAL = 1000; //1sec

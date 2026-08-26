@@ -3,6 +3,8 @@
 
 const AuthToken = require('./AuthToken');
 const jose = require('jose');
+const Config = require('./Config');
+const config = new Config();
 const { convertExpirationTimeFromMinutesToSeconds, isAppRequest } = require('./helpers');
 
 class AuthService {
@@ -234,7 +236,7 @@ class AuthService {
     // save JWE inside a Cookie
     setAuthCookie(res, cookieValue, isApp = false) {
 		res.cookie(this._authProvider.config.tokenCookieName, cookieValue, {
-            domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+            domain: `.${config.DOMAIN}`,
             httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
 			sameSite: isApp ? 'none' : 'lax',

@@ -515,7 +515,7 @@ function startServer() {
 		resave: false,
 		saveUninitialized: true,
 		cookie: {
-			domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+			domain: `.${config.DOMAIN}`,
 			httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
 			path: '/'
@@ -531,7 +531,7 @@ function startServer() {
 		if(!csrfTokenValue) {
 			csrfTokenValue = crypto.randomBytes(32).toString('hex');
 			res.cookie(CSRF_TOKEN_COOKIE_NAME, csrfTokenValue, {
-				domain: process.env.NODE_ENV === 'production' ? '.TODO_PRODUCTION_URL_HERE' : 'localhost',
+				domain: `.${config.DOMAIN}`,
 				httpOnly: true,
 				secure: process.env.NODE_ENV === 'production',
 				sameSite: isAppRequest(req) ? 'none' : 'lax',
@@ -1135,11 +1135,8 @@ function startServer() {
 			paceInvert: FITNESS_MANAGER.paceInvert,
 		});
 
-
 		const username = socket.user.username;
 		const userKey = username.toUpperCase();
-
-		console.log('#####** username', username);
 
 		const userRecord = USERS[userKey] || (USERS[userKey] = {
 			email: socket.user.email,
