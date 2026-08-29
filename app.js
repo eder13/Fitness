@@ -45,7 +45,7 @@ var PLAYER_LIST = {};
 var FITNESS_MANAGER = new FitnessManager();
 var DB_TOKEN = config.DB_TOKEN;
 var ONLINE_STATE = {};
-var CSRF_TOKEN_COOKIE_NAME = 'fitness_csrf';
+var CSRF_TOKEN_COOKIE_NAME = 'f_csrf';
 
 
 
@@ -502,15 +502,16 @@ function saveDataStorage() {
 
 function startServer() {
 	if (!process.env.SESSION_COOKIE_SECRET) {
+		console.error("no session cookie secret set, exiting...");
 		process.exit(1);
 	}
 
 	// use
 	application.use('/', express.static(__dirname + '/client'));
 	application.use('/client', express.static(__dirname + '/client'));
-	// TODO: don't use request.session -> use a separate cookie instead that is encrypted so that I can send it to the app client (cross site cookie)
+	// TODO: it could be that I have to use regular cookies instead of req.session due to cross site cookies for Capacitor App support, keep for now as is
 	application.use(session({
-		name: 'fitness_caf_session',
+		name: process.env.SESSION_COOKIE_NAME ?? 'f_s',
 		secret: process.env.SESSION_COOKIE_SECRET,
 		resave: false,
 		saveUninitialized: true,

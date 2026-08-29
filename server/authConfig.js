@@ -8,6 +8,16 @@ const config = new Config();
 const logFile = new Log();
 
 function AuthConfig() {
+    if (!process.env.MSAL_APP_CLIENT_ID || !process.env.MSAL_CLIENT_SECRET || !process.env.MSAL_DOMAIN_NAME) {
+        console.error("missing entra id env config, exiting...");
+        console.error("current entra id config that is set/missing:", {
+            MSAL_DOMAIN_NAME: { isSet: !!process.env.MSAL_DOMAIN_NAME },
+            MSAL_APP_CLIENT_ID: { isSet: !!process.env.MSAL_APP_CLIENT_ID },
+            MSAL_CLIENT_SECRET: { isSet: !!process.env.MSAL_CLIENT_SECRET }
+        });
+        process.exit(1);
+    }
+
     this.confidentialClient = {
         auth: {
             clientId: process.env.MSAL_APP_CLIENT_ID,
@@ -29,10 +39,11 @@ function AuthConfig() {
     };
 
     this.flows = {
-        signUpSignIn: process.env.SIGN_UP_SIGN_IN_FLOW
+        signUpSignIn: process.env.SIGN_UP_SIGN_IN_FLOW ?? 'SUSI_DEV_LOCALHOST'
     }; 
     
     if (!process.env.TOKEN_SECRET) {
+        console.error("no token cookie secret set, exiting...");
         process.exit(1);
     }
     
