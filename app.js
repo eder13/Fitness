@@ -31,6 +31,21 @@ var config = new Config();
 var server = new http.Server(application);
 var io = require('socket.io')(server, {
 	pingTimeout: 3600000,
+	allowRequest: function (request, callback) {
+		var origin = request.headers.origin;
+		var configuredOrigins = (process.env.SOCKET_ALLOWED_ORIGINS || '').split(',').map(function (value) {
+			return value.trim();
+		}).filter(Boolean);
+		var defaultOrigins = [
+			'http://localhost:' + config.LOCAL_PORT,
+			'http://localhost:8080',
+			'https://' + config.DOMAIN,
+			'http://' + config.DOMAIN
+		];
+		var allowedOrigins = new Set(configuredOrigins.length > 0 ? configuredOrigins : defaultOrigins);
+		// Native clients may not send an Origin header. Browser origins must be explicit.
+		callback(null, !origin || allowedOrigins.has(origin));
+	}
 });
 var dropbox = new DropBoxHandler();
 var logFile = new Log();
@@ -46,6 +61,8 @@ var FITNESS_MANAGER = new FitnessManager();
 var DB_TOKEN = config.DB_TOKEN;
 var ONLINE_STATE = {};
 var CSRF_TOKEN_COOKIE_NAME = 'f_csrf';
+var USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,63}$/;
+var MAX_WORKOUT_VALUE = 100000;
 
 
 
@@ -260,12 +277,73 @@ function savePlayer(player) {
 	});
 }
 
+function normalizeUsername(username) {
+	if (typeof username !== 'string') {
+		return null;
+	}
+	var normalized = username.trim();
+	return USERNAME_PATTERN.test(normalized) ? normalized : null;
+}
+
+function usernameKey(username) {
+	var normalized = normalizeUsername(username);
+	return normalized ? normalized.toUpperCase() : null;
+}
+
+// Keep the historical spelling of an existing player. This makes the lookup
+// case-insensitive without creating a second registeredPlayers/save entry.
+function findExistingUsername(username) {
+	var key = usernameKey(username);
+	if (!key) return null;
+	var candidates = Object.keys(FITNESS_MANAGER.registeredPlayers).concat(Object.keys(USERS));
+	for (var iterator = 0; iterator < candidates.length; iterator++) {
+		if (usernameKey(candidates[iterator]) === key) {
+			return candidates[iterator];
+		}
+	}
+	return null;
+}
+
+function normalizeDate(value) {
+	if (typeof value !== 'string' && !(value instanceof Date)) return null;
+	var date = new Date(value);
+	if (Number.isNaN(date.getTime())) return null;
+	return common.getDateFormat(common.createZeroDate(date), 'YYYY-MM-DD');
+}
+
+function isFiniteRange(value, min, max) {
+	var number = Number(value);
+	return value !== null && value !== '' && Number.isFinite(number) && number >= min && number <= max;
+}
+
+function validateWorkoutPayload(data) {
+	return data && typeof data === 'object' &&
+		typeof data.exId === 'string' && data.exId.length > 0 && data.exId.length <= 128 &&
+		!!normalizeDate(data.date) &&
+		isFiniteRange(data.count, 0.000001, MAX_WORKOUT_VALUE) &&
+		(data.countAdditional === undefined || data.countAdditional === '' || isFiniteRange(data.countAdditional, 0, MAX_WORKOUT_VALUE)) &&
+		(data.weight === undefined || data.weight === '' || isFiniteRange(data.weight, 0, MAX_WORKOUT_VALUE)) &&
+		(typeof data.atOnce === 'boolean');
+}
+
+function validateHistoryDeletion(data) {
+	return data && typeof data === 'object' &&
+		typeof data.id === 'string' && data.id.length > 0 && data.id.length <= 128 &&
+		!!normalizeDate(data.date);
+}
+
+function rejectInvalidPayload(socket, eventName) {
+	logFile.log('Rejected invalid payload for ' + eventName, false, 1);
+	socket.emit('alertMsg', { data: 'Ungültige Anfrage.' });
+}
+
 /**
  * @param {string} name 
  * @param {string} id 
  */
 function loadPlayer(name, id, cb) {
-	storageManager.get(name).then(result => {
+	var canonicalName = findExistingUsername(name) || name;
+	storageManager.get(canonicalName).then(result => {
 
 		PLAYER_LIST[id].name = result.content.name;
 		PLAYER_LIST[id].active = result.content.active;
@@ -276,8 +354,8 @@ function loadPlayer(name, id, cb) {
 		PLAYER_LIST[id].bestExercises = result.content.bestExercises;
 		PLAYER_LIST[id].online = result.content.online;
 
-		if (FITNESS_MANAGER.registeredPlayers[name] == undefined) {
-			FITNESS_MANAGER.addNewPlayer(name);
+		if (FITNESS_MANAGER.registeredPlayers[canonicalName] == undefined) {
+			FITNESS_MANAGER.addNewPlayer(canonicalName);
 		}
 
 
@@ -287,9 +365,9 @@ function loadPlayer(name, id, cb) {
 	})
 		.catch((err) => {
 
-			PLAYER_LIST[id].name = name;
-			if (FITNESS_MANAGER.registeredPlayers[name] == undefined) {
-				FITNESS_MANAGER.addNewPlayer(name);
+			PLAYER_LIST[id].name = canonicalName;
+			if (FITNESS_MANAGER.registeredPlayers[canonicalName] == undefined) {
+				FITNESS_MANAGER.addNewPlayer(canonicalName);
 			}
 			uiRefresh();
 			cb("Player <" + name + ">: No Savestate.");
@@ -300,23 +378,31 @@ function loadPlayer(name, id, cb) {
 
 function loadSaveFiles(loadSaveFilesResult) {
 	let start = Date.now();
-	dropbox.downloadFile(DB_TOKEN, config.LOG_FILE_NAME, function (callback) {
-		logFile.log(callback.msg, false, callback.sev);
-		dropbox.downloadFile(DB_TOKEN, config.DATA_STORAGE_FILE_NAME, function (callback) {
-			logFile.log(callback.msg, false, callback.sev);
-			loadFitnessManager(function (fitnessManagerLoadingResult) {
-				for (let playerName in FITNESS_MANAGER.registeredPlayers) {
-					dropbox.downloadFile(DB_TOKEN, playerName + ".json", function (callback) {
-						logFile.log(callback.msg, false, callback.sev);
-					});
-				}
-				let end = Date.now();
-				logFile.log(`loadSaveFiles + loadFitnessManager init done in ${end - start} ms`, false, 0);
-
-				loadSaveFilesResult(fitnessManagerLoadingResult);
+	function download(id) {
+		return new Promise(function (resolve) {
+			dropbox.downloadFile(DB_TOKEN, id, function (callback) {
+				logFile.log(callback.msg, false, callback.sev);
+				resolve();
 			});
 		});
-	});
+	}
+
+	Promise.all([download(config.LOG_FILE_NAME), download(config.DATA_STORAGE_FILE_NAME)])
+		.then(function () {
+			return new Promise(function (resolve) {
+				loadFitnessManager(function (result) { resolve(result); });
+			});
+		})
+		.then(function (fitnessManagerLoadingResult) {
+			return Promise.all(Object.keys(FITNESS_MANAGER.registeredPlayers).map(function (playerName) {
+				return download(playerName + '.json');
+			})).then(function () { return fitnessManagerLoadingResult; });
+		})
+		.then(function (fitnessManagerLoadingResult) {
+			let end = Date.now();
+			logFile.log(`loadSaveFiles + loadFitnessManager init done in ${end - start} ms`, false, 0);
+			loadSaveFilesResult(fitnessManagerLoadingResult);
+		});
 
 }
 
@@ -819,10 +905,16 @@ function startServer() {
 	OnPlayerConnection = function (socket) {
 
 		var newPlayer = new Player(socket.id);
+		// Bind all subsequent socket handlers to the authenticated identity immediately.
+		newPlayer.name = socket.authenticatedUsername;
 		PLAYER_LIST[newPlayer.id] = newPlayer;
 
 
 		socket.on("endChallenge", function (data) {
+			if (!data || typeof data.data !== 'string' || data.data.length > 128) {
+				rejectInvalidPayload(socket, 'endChallenge');
+				return;
+			}
 			FITNESS_MANAGER.finishChallenge(data.data, function (endChallengeResult) {
 				logFile.log(endChallengeResult, false, 0);
 				uiRefresh();
@@ -830,6 +922,10 @@ function startServer() {
 
 		});
 		socket.on("hideExercise", function (data) {
+			if (!data || typeof data.id !== 'string' || !FITNESS_MANAGER.exerciseList[data.id]) {
+				rejectInvalidPayload(socket, 'hideExercise');
+				return;
+			}
 			FITNESS_MANAGER.hideExercise(data.id, newPlayer.name, function (hideExerciseResult) {
 				logFile.log(hideExerciseResult, false, 0);
 				uiRefresh();
@@ -837,6 +933,10 @@ function startServer() {
 		});
 
 		socket.on("savePersonalPrefs", function (data) {
+			if (!data || data.prefName !== "hideInactivePlayers" || typeof data.value !== 'boolean') {
+				rejectInvalidPayload(socket, 'savePersonalPrefs');
+				return;
+			}
 			if (data.prefName === "hideInactivePlayers") {
 				USERS[newPlayer.name.toUpperCase()].hideInactivePlayers = data.value;
 			}
@@ -848,6 +948,14 @@ function startServer() {
 
 
 		socket.on("requestProfileUpdate", function (data) {
+			var allowedProfileKeys = new Set(['email', 'allowEmail', 'color']);
+			if (!data || typeof data !== 'object' || Object.keys(data).some(function (key) { return !allowedProfileKeys.has(key); }) ||
+				(data.email !== undefined && (typeof data.email !== 'string' || data.email.length > 254)) ||
+				(data.allowEmail !== undefined && typeof data.allowEmail !== 'boolean') ||
+				(data.color !== undefined && (typeof data.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(data.color)))) {
+				rejectInvalidPayload(socket, 'requestProfileUpdate');
+				return;
+			}
 			for (let key in data) {
 				USERS[newPlayer.name.toUpperCase()][key] = data[key];
 			}
@@ -872,6 +980,13 @@ function startServer() {
 
 
 		socket.on("modifyExercise", function (data) {
+			if (!data || typeof data !== 'object' || typeof data.id !== 'string' || !FITNESS_MANAGER.exerciseList[data.id] ||
+				typeof data.name !== 'string' || data.name.length === 0 || data.name.length > 200 ||
+				typeof data.unit !== 'string' || typeof data.type !== 'string' || typeof data.equipment !== 'string' ||
+				typeof data.bothSides !== 'string' || typeof data.isPaceExercise !== 'boolean') {
+				rejectInvalidPayload(socket, 'modifyExercise');
+				return;
+			}
 			var creator = PLAYER_LIST[newPlayer.id].name;
 			logFile.log(newPlayer.name + " " + "edits Exercise " + data.name, false, 0);
 			FITNESS_MANAGER.editExercise(data, creator, function (result) {
@@ -881,6 +996,12 @@ function startServer() {
 		});
 
 		socket.on("addExercise", function (data) {
+			if (!data || typeof data !== 'object' || typeof data.name !== 'string' || data.name.length === 0 || data.name.length > 200 ||
+				typeof data.unit !== 'string' || typeof data.type !== 'string' || typeof data.equipment !== 'string' ||
+				typeof data.bothSides !== 'boolean' && typeof data.bothSides !== 'string') {
+				rejectInvalidPayload(socket, 'addExercise');
+				return;
+			}
 			var usesWeight;
 			if (data.baseWeight === "") {
 				data.baseWeight = 0;
@@ -907,6 +1028,10 @@ function startServer() {
 		});
 
 		socket.on("deleteExercise", function (data) {
+			if (!data || typeof data.id !== 'string' || !FITNESS_MANAGER.exerciseList[data.id]) {
+				rejectInvalidPayload(socket, 'deleteExercise');
+				return;
+			}
 			FITNESS_MANAGER.deleteExercise(data.id, function (result) {
 				PLAYER_LIST[newPlayer.id].deletedExercises++;
 				logFile.log(newPlayer.name + " deleted " + result, false, 0);
@@ -918,10 +1043,14 @@ function startServer() {
 
 
 		socket.on("addDoneExercise", function (data) {
+			if (!validateWorkoutPayload(data) || !FITNESS_MANAGER.exerciseList[data.exId]) {
+				rejectInvalidPayload(socket, 'addDoneExercise');
+				return;
+			}
 			var currentDateInfo = common.getDateInfo(data.date);
 			if (currentDateInfo.isLast30Days) {
 				logFile.log(newPlayer.name + " " + "adds Workout", false, 0);
-				var id = Math.random().toFixed(config.ID_LENGTH).slice(2);
+				var id = crypto.randomUUID();
 				FITNESS_MANAGER.addToHistory(id, PLAYER_LIST[socket.id].name, data.exId, data.weight, data.count, data.countAdditional, data.date, data.atOnce, function (result) {
 					logFile.log(result, false, 0);
 					uiRefresh();
@@ -933,11 +1062,21 @@ function startServer() {
 		});
 
 		socket.on("deleteHistory", function (data) {
+			if (!validateHistoryDeletion(data)) {
+				rejectInvalidPayload(socket, 'deleteHistory');
+				return;
+			}
+			var historyDate = normalizeDate(data.date);
+			var historyOwner = FITNESS_MANAGER.getHistoryEntryOwner(data.id, historyDate);
+			if (!historyOwner || usernameKey(historyOwner) !== usernameKey(PLAYER_LIST[socket.id].name)) {
+				rejectInvalidPayload(socket, 'deleteHistory ownership');
+				return;
+			}
 
-			var currentDateInfo = common.getDateInfo(data.date);
+			var currentDateInfo = common.getDateInfo(historyDate);
 			if (currentDateInfo.isLast30Days) {
 				logFile.log(newPlayer.name + " " + "deletes Workout", false, 0);
-				FITNESS_MANAGER.deleteHistory(data.id, data.date, function (result) {
+				FITNESS_MANAGER.deleteHistory(data.id, historyDate, function (result) {
 					logFile.log(result, false, 0);
 					uiRefresh();
 				});
@@ -1057,6 +1196,11 @@ function startServer() {
 
 
 		socket.on("sendChatMessage", function (data) {
+			if (!data || typeof data.msg !== 'string' || data.msg.length === 0 || data.msg.length > 2000) {
+				rejectInvalidPayload(socket, 'sendChatMessage');
+				return;
+			}
+			data.name = newPlayer.name;
 			var matcher = /<[a-z][\s\S]*>/;
 			if (data.msg.match(matcher)) {
 				data.msg = "HTML Tags erkannt - ungültig";
@@ -1113,9 +1257,15 @@ function startServer() {
 		});
 
 		socket.on("addChallenge", function (data) {
-			if (data.id != undefined && data.id != "") {
-				FITNESS_MANAGER.createChallenge(data.id, data.dateStart, data.dateEnd, data.challengeName, data.toDo, data.creator)
+			if (!data || typeof data.id !== 'string' || !FITNESS_MANAGER.exerciseList[data.id] ||
+				typeof data.dateStart !== 'string' || !normalizeDate(data.dateStart) ||
+				typeof data.dateEnd !== 'string' || !normalizeDate(data.dateEnd) ||
+				typeof data.challengeName !== 'string' || data.challengeName.length === 0 || data.challengeName.length > 200 ||
+				!isFiniteRange(data.toDo, 1, MAX_WORKOUT_VALUE)) {
+				rejectInvalidPayload(socket, 'addChallenge');
+				return;
 			}
+			FITNESS_MANAGER.createChallenge(data.id, data.dateStart, data.dateEnd, data.challengeName, Number(data.toDo), newPlayer.name)
 
 			uiRefresh();
 
@@ -1128,7 +1278,7 @@ function startServer() {
 	//NEW SOCKET CONNECTS (LOGIN)
 	OnSocketConnection = function (socket) {
 		//someone connects
-		socket.id = Math.random().toFixed(config.ID_LENGTH).slice(2);
+		socket.id = crypto.randomUUID();
 		SOCKET_LIST[socket.id] = socket;
 		logFile.log('new socket connection (' + socket.id + ")", false, 0);
 		socket.emit('configValues', {
@@ -1137,8 +1287,16 @@ function startServer() {
 		});
 
 		const username = socket.user.username;
-		const userKey = username.toUpperCase();
-
+		const normalizedUsername = normalizeUsername(username);
+		if (!normalizedUsername) {
+			logFile.log('Rejected authenticated user with invalid username', false, 2);
+			socket.disconnect(true);
+			return;
+		}
+		const existingUsername = findExistingUsername(normalizedUsername);
+		const playerUsername = existingUsername || normalizedUsername;
+		socket.authenticatedUsername = playerUsername;
+		const userKey = usernameKey(playerUsername);
 		const userRecord = USERS[userKey] || (USERS[userKey] = {
 			email: socket.user.email,
 			allowEmail: false,
@@ -1149,13 +1307,13 @@ function startServer() {
 		userRecord.allowEmail = userRecord.allowEmail === true;
 		userRecord.hideInactivePlayers = userRecord.hideInactivePlayers === true;
 
-		FITNESS_MANAGER.addToEventLog(username + " hat sich angemeldet!");
+		FITNESS_MANAGER.addToEventLog(playerUsername + " hat sich angemeldet!");
 		OnPlayerConnection(socket);
-		loadPlayer(username, socket.id, function (loadPlayerResult) {
+		loadPlayer(playerUsername, socket.id, function (loadPlayerResult) {
 			logFile.log(loadPlayerResult, false, 0);
 			socket.emit('authenticated', {
 				success: true,
-				name: username,
+				name: playerUsername,
 				profileData: {
 					color: userRecord.color,
 					allowEmail: userRecord.allowEmail,
@@ -1165,8 +1323,8 @@ function startServer() {
 			});
 		});
 
-		FITNESS_MANAGER.colorList[username] = userRecord.color;
-		ONLINE_STATE[username] = true;
+		FITNESS_MANAGER.colorList[playerUsername] = userRecord.color;
+		ONLINE_STATE[playerUsername] = true;
 
 		//someone disconnects
 		socket.on('disconnect', function () {
