@@ -33,8 +33,8 @@ If you want to build and run your own **production** container locally:
 # Build the production docker container (final stage)
 docker build . -t <your-image-tag>
 
-# Run it (if you have previously started the development container, halt it!)
-docker run -e PROXY_MODE=1 -p 8080:8080 <your-image-tag>
+# Run it with runtime configuration (if you have previously started the development container, halt it!)
+docker run --env-file .env -e PROXY_MODE=1 -p 8080:8080 <your-image-tag>
 # now available at http://localhost:8080
 ```
 

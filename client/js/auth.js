@@ -11,7 +11,7 @@ $(function () {
     window.showLoginError = function (message) {
         const error = $('#login__form-error');
         error.text(message || 'Die Anmeldung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.');
-        error.removeClass('v-hidden');
+        error.removeClass('d-none');
     };
 
     function showAccountInfo(json) {
@@ -120,6 +120,10 @@ $(function () {
         SOCKET.on('connect_error', function () {
             showLoginForm();
             showLoginError('Die Anmeldung konnte nicht geprüft werden. Bitte melden Sie sich erneut an.');
+        });
+        SOCKET.on('usernameUnavailable', function (response) {
+            showLoginForm();
+            showLoginError(response && response.message || 'Dieser Username wird bereits verwendet. Bitte wählen Sie einen anderen Username.');
         });
     }
 });

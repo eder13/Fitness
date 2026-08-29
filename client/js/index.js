@@ -131,7 +131,7 @@ $("#login__form").on("submit", function (event) {
             showLoginError('Der Login-Dienst ist derzeit nicht erreichbar. Bitte versuchen Sie es später erneut.');
 
             setTimeout(function () {
-                $("#login__form-error").addClass("v-hidden");
+                $("#login__form-error").addClass("d-none");
             }, 5000);
         }
     })
@@ -139,7 +139,7 @@ $("#login__form").on("submit", function (event) {
         showLoginError('Der Login-Dienst ist derzeit nicht erreichbar. Bitte versuchen Sie es später erneut.');
 
         setTimeout(function () {
-            $("#login__form-error").addClass("v-hidden");
+            $("#login__form-error").addClass("d-none");
         }, 5000);
     });
 });

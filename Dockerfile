@@ -63,9 +63,7 @@ COPY --chown=node:node --from=builder /app/app.js /app/app.js
 # ENV defaults
 ENV NODE_ENV=production
 ENV PROXY_MODE=1
-# ENV DB_TOKEN=
-# ENV GAGS_USERNAME=
-# ENV GAGS_PASSWORD=
+# Secrets and deployment-specific auth settings are supplied at runtime.
 
 ENV PORT=8080
 EXPOSE 8080

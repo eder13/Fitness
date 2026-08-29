@@ -26,13 +26,30 @@
 					border-radius: 0.25rem;
 					width: fit-content;
 				"
-				class="v-hidden"
+				class="d-none"
 				id="login__form-error"
 			>
 				Fehler beim Einloggen. Bitte versuchen Sie es erneut.
 			</div>
 
-			<label for="login__form-btn">Login or Register</label>
+			<div style="color: #0c5460;
+						background-color: #d1ecf1;
+						border-color: #bee5eb;position: relative;
+						padding: .75rem 1.25rem;
+						margin-bottom: 1rem;
+						border: 1px solid transparent;
+						border-radius: .25rem;
+						width: fit-content;
+				"
+			>
+				<h3 style="display:flex; gap: 0.2rem">
+					<span style="background-image: var(--icon-info);background-color: transparent;color: #333;outline: none;width: 16px;height: 16px;display: inline-block"></span> Migration
+				</h3>
+				<p style="max-width: 500px;">Um die aktuellen Daten zu laden, bei der Neu-Registrierung bei "Username" den bisherigen Usernamen verwenden.
+					Dadurch sollten automatisch die bisherigen Daten geladen werden. Bei Fehlern bitte an den Admin wenden.
+				</p>
+			</div>
+			<label for="login__form-btn">Einloggen oder Registrieren</label>
 			<button id="login__form-btn" type="submit">Login</button>
 		</form>
 
@@ -52,6 +69,15 @@
 		<div id="div_changeLog" class="changelog">
 			<p class="MOTD">
 				MOTD: EIN NEUES JAHR BEGINNT! 2026 - Bedenkt 
+			</p>
+			<p>
+				NEWS (01.09.2026) v2.00:
+				<li>
+					<span class="changeLog_Feature">Feature: </span>Neues Authentication System (App Ready)
+				</li>	
+				<li>
+					<span class="changeLog_Maintenance">Maintenance: </span>Upgrade NodeJS
+				</li>
 			</p>
 			<p>
 				NEWS (05.01.2026) v1.93:

@@ -1297,12 +1297,28 @@ function startServer() {
 		const playerUsername = existingUsername || normalizedUsername;
 		socket.authenticatedUsername = playerUsername;
 		const userKey = usernameKey(playerUsername);
+		const existingUserRecord = USERS[userKey];
+		if (existingUserRecord && existingUserRecord.identityId && existingUserRecord.identityId !== socket.user.id) {
+			socket.emit('usernameUnavailable', {
+				code: 'ERR_USERNAME_ALREADY_USED',
+				message: 'Dieser Username wird bereits von einem anderen Benutzer verwendet. Bitte wählen Sie einen anderen Username.'
+			});
+			delete SOCKET_LIST[socket.id];
+			socket.disconnect(true);
+			return;
+		}
 		const userRecord = USERS[userKey] || (USERS[userKey] = {
 			email: socket.user.email,
 			allowEmail: false,
 			hideInactivePlayers: false,
-			color: '#777777'
+			color: '#777777',
+			identityId: socket.user.id
 		});
+		if (!userRecord.identityId) {
+			// Legacy Dropbox users have no Entra identity yet; bind them on first login.
+			userRecord.identityId = socket.user.id;
+			FITNESS_MANAGER.needsUpload.dataStorage = true;
+		}
 		userRecord.email = userRecord.email || socket.user.email;
 		userRecord.allowEmail = userRecord.allowEmail === true;
 		userRecord.hideInactivePlayers = userRecord.hideInactivePlayers === true;
@@ -1359,6 +1375,4 @@ function startServer() {
 
 
 }
-
-
 

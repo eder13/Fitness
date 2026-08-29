@@ -15,7 +15,8 @@
         --tab_labelWidth: 10em;
         --mainButtonWidth: 100px;
         --mainButtonHeight: 30px;
-        --tableFontsize:11px
+        --tableFontsize:11px;
+        --icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a1.25 1.25 0 1 1 0 2.5A1.25 1.25 0 0 1 12 6zm2 12h-4v-2h1v-4h-1v-2h3v6h1v2z'/%3E%3C/svg%3E");
     }
   
 @media only screen and (max-width: 991px) {
@@ -36,7 +37,8 @@
         --tab_labelWidth: 10em;
         --mainButtonWidth: 100px;
         --mainButtonHeight: 30px;
-        --tableFontsize:10px
+        --tableFontsize:10px;
+        --icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 4a1.25 1.25 0 1 1 0 2.5A1.25 1.25 0 0 1 12 6zm2 12h-4v-2h1v-4h-1v-2h3v6h1v2z'/%3E%3C/svg%3E");
     }
   }
 
@@ -415,6 +417,11 @@ button:hover {
 .changeLog_Feature {
     font-weight: bold;
     color: rgb(42, 136, 29);
+}
+
+.changeLog_Maintenance {
+    font-weight: bold;
+    color: rgb(136, 86, 29);
 }
 
 .changeLog_Bug {
