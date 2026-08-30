@@ -68,7 +68,7 @@ For local development without Dropbox, use additionally:
 PROXY_MODE=1
 ```
 
-In this mode, Dropbox download and upload operations are disabled. Local save files in the `saves/` directory can still be used.
+In this mode, Dropbox download and upload operations are disabled. Local save files in the `saves/` directory can still be used. `DB_TOKEN` can be ommitted in this case.
 
 ### Optional environment variables
 
