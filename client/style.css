@@ -111,6 +111,31 @@ button:hover {
     align-self: center;
 }
 
+.legal-info {
+    overflow-y: auto;
+}
+
+.tab .legal-info__content {
+    box-sizing: border-box;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2rem;
+    line-height: 1.5;
+}
+
+.tab .legal-info__content h1,
+.tab .legal-info__content h2 {
+    color: rgb(0, 51, 0);
+}
+
+.tab .legal-info__content h2 {
+    margin-top: 1.5rem;
+}
+
+.tab .legal-info__content a {
+    color: inherit;
+}
+
 #div_changeLog {
     height: calc(100vh - var(--height-div-login-form) - 60px);
     overflow-y: scroll;

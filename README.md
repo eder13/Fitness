@@ -74,6 +74,7 @@ In this mode, Dropbox download and upload operations are disabled. Local save fi
 
 ```dotenv
 DOMAIN=localhost
+PUBLIC_CONTACT_EMAIL=mycontact@mail.com
 GAGS_USERNAME=your-smtp-username
 GAGS_PASSWORD=your-smtp-password
 SESSION_COOKIE_NAME=f_s
@@ -87,6 +88,8 @@ POST_LOGOUT_REDIRECT_URI=http://localhost:2000/
 ```
 
 `DOMAIN` uses localhost as default. For production make sure to set the correct domain, but can be ommited for local development.
+
+`PUBLIC_CONTACT_EMAIL` is the contact email for legal (impressum).
 
 `GAGS_USERNAME` and `GAGS_PASSWORD` are only required for email notifications.
 

@@ -7,6 +7,11 @@
 	<title>💪 G A G S 💪</title>
 	<link rel="icon" type="image/png" href="/client/pics/fav.png">
 	<link rel="stylesheet" href="style.css" />
+	<noscript>
+		For full functionality of this site it is necessary to enable JavaScript.
+		Here are the <a href="https://www.enablejavascript.io/">
+		instructions how to enable JavaScript in your web browser</a>.
+	</noscript>
 </head>
 
 <body>
@@ -63,6 +68,8 @@
 					</form>
 				</div>
 			</div>
+
+			<button id="button_showLegalInfo" type="button">Impressum</button>
 		</div>
 
 		<hr>
@@ -500,6 +507,48 @@
 			</p>
 		</div>
 	</div>
+	<div id="div_legalInfo" class="tab legal-info">
+		<div class="legal-info__content">
+			<h1>Impressum</h1>
+			<p>Angaben gemäß <a href="https://www.ris.bka.gv.at/Dokument.wxe?Abfrage=Bundesnormen&Dokumentnummer=NOR40134353">Mediengesetz Austria §25</a>.</p>
+
+			<h2>Betreiber</h2>
+			<p>
+				<strong>Christian Fuchs</strong><br>
+				8313 Breitenfeld an der Rittschein<br>
+				Österreich
+			</p>
+
+			<h2>Kontakt</h2>
+			<p>E-Mail: <a id="legal-email-contact" href="mailto:[E-Mail-Adresse]">[E-Mail-Adresse]</a></p>
+
+			<h2>Haftung für Inhalte</h2>
+			<p>
+				Die Inhalte dieser Anwendung wurden mit größtmöglicher Sorgfalt erstellt. Für die
+				Richtigkeit, Vollständigkeit und Aktualität der Inhalte kann jedoch keine Gewähr
+				übernommen werden.
+			</p>
+
+			<h2>Haftung für Links</h2>
+			<p>
+				Diese Anwendung kann Links zu externen Websites Dritter enthalten. Auf deren Inhalte
+				besteht kein Einfluss. Für die Inhalte der verlinkten Seiten ist stets der jeweilige
+				Betreiber verantwortlich.
+			</p>
+
+			<h2>Cookies</h2>
+			<p>
+				Diese Anwendung verwendet nur funktionelle Cookies, welche keine Zustimmung laut DSGVO benötigen.
+			</p>
+
+			<h2>Löschung des Accounts</h2>
+			<p>
+				Bitte ein formloses E-Mail and den oben angegebenen Kontakt mit dem Betreff "Löschen" von der registrierten E-Mail Adresse.
+			</p>
+
+			<button id="button_backFromLegalInfo" type="button">Zurück</button>
+		</div>
+	</div>
 	<div id="div_MainPage" class="tab">
 		<div id="div_allPlayersTable">
 			<table id="table_allPlayersTable" class="std_table">
@@ -851,6 +900,7 @@
 			<button id="button_tabCompetition">Siege</button>
 			<button id="button_tabEventLog">Events</button>
 			<button id="button_tabProfile">Profil</button>
+			<button id="button_tabLegalInfo">Impressum</button>
 			<input id="input_onlineIndicator" type="textbox" disabled="true">
 			<a href="https://trello.com/invite/b/aZfDB1r0/d9bb40353771097cb89993e31baef54b/fitnessapp"
 				target="_blank">Feedback</a>
@@ -860,9 +910,9 @@
 		</div>
 	</footer>
 
-	<script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/1.4.5/socket.io.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.3/Chart.js"></script>
+	<script type="text/javascript" src="./vendor/jquery-3.4.1.min.js"></script>
+	<script type="text/javascript" src="./vendor/socket.io.min.js"></script>
+	<script type="text/javascript" src="./vendor/Chart.js"></script>
 	<script type="text/javascript" src="./js/common.js"></script>
 	<script type="text/javascript" src="./js/index.js"></script>
 </body>

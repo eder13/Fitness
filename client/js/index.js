@@ -31,6 +31,10 @@ var button_hideExercise = document.getElementById('button_hideExercise');
 var button_showHiddenExercises = document.getElementById('button_showHiddenExercises');
 var button_tabProfile = document.getElementById('button_tabProfile');
 var button_saveProfileData = document.getElementById('button_saveProfileData');
+var button_showLegalInfo = document.getElementById('button_showLegalInfo');
+var button_tabLegalInfo = document.getElementById('button_tabLegalInfo');
+var button_backFromLegalInfo = document.getElementById('button_backFromLegalInfo');
+var button_link_mail_contact = document.getElementById('legal-email-contact');
 
 //DIVS
 var div_ExerciseOverview = document.getElementById('div_ExerciseOverview');
@@ -47,6 +51,7 @@ var div_events = document.getElementById('div_events');
 var div_eventLog = document.getElementById('div_eventLog');
 var div_graphExercise = document.getElementById('div_graphExercise');
 var div_profile = document.getElementById('div_profile');
+var div_legalInfo = document.getElementById('div_legalInfo');
 var div_loginForm = document.getElementById('div_login--form');
 
 //INPUTS
@@ -118,6 +123,7 @@ var timer;
 $(function () {
     let csrfToken = null;
     calculateHeightDivLoginContainer();
+    getConfig();
 
     function calculateHeightDivLoginContainer() {
         const resizeObserver = new ResizeObserver((entries) => {
@@ -127,6 +133,16 @@ $(function () {
             }
         });
         resizeObserver.observe(div_loginForm);
+    }
+
+    function getConfig() {
+        loadConfig()
+            .done(function (json) {
+                if (json.contactEmail) {
+                    button_link_mail_contact.textContent = json.contactEmail;
+                    button_link_mail_contact.setAttribute('href', `mailto:${json.contactEmail}`);
+                }
+            })
     }
 
     function showLoginForm() {
@@ -149,6 +165,14 @@ $(function () {
     function loadProfile() {
         return $.ajax({
             url: '/profile',
+            method: 'GET',
+            dataType: 'json'
+        });
+    }
+
+    function loadConfig() {
+        return $.ajax({
+            url: '/config',
             method: 'GET',
             dataType: 'json'
         });
@@ -349,7 +373,29 @@ $("#button_doneExerciseSend").click(function () {
     }
 });
 
+var legalInfoOpenedFromLogin = false;
+
+function showLegalInfo() {
+    legalInfoOpenedFromLogin = div_login.style.display !== "none";
+    div_login.style.display = "none";
+    $(".tab").css("display", "none");
+    div_legalInfo.style.display = "inline-block";
+}
+
+$("#button_showLegalInfo, #button_tabLegalInfo").click(showLegalInfo);
+
+$("#button_backFromLegalInfo").click(function () {
+    div_legalInfo.style.display = "none";
+
+    if (legalInfoOpenedFromLogin) {
+        div_login.style.display = "block";
+    } else {
+        $("#button_tabMainPage").click();
+    }
+});
+
 $("#button_tabMainPage").click(function () {
+    div_legalInfo.style.display = "none";
     $("#div_ExerciseOverview").css("display", "none");
     $("#div_PersonalOverview").css("display", "none");
     $("#div_statistics").css("display", "none");

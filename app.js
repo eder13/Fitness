@@ -731,6 +731,9 @@ function startServer() {
 	}
 
 	// controller
+	application.get('/config', (_, res) => {
+		res.json({ contactEmail: process.env.PUBLIC_CONTACT_EMAIL || '' });
+	});
 	application.get('/csrf-token', (req, res) => {
 		res.json({
 			csrfToken: getOrCreateCsrfToken(req, res)
