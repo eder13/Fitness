@@ -731,20 +731,27 @@ function startServer() {
 	}
 
 	// controller
-	application.get('/config', (_, res) => {
+	function disableCaching(req, res, next) {
+		res.set('Cache-Control', 'no-store, private');
+		res.set('Pragma', 'no-cache');
+		res.set('Expires', '0');
+		next();
+	}
+
+	application.get('/config', disableCaching, (_, res) => {
 		res.json({ contactEmail: process.env.PUBLIC_CONTACT_EMAIL || '' });
 	});
-	application.get('/csrf-token', (req, res) => {
+	application.get('/csrf-token', disableCaching, (req, res) => {
 		res.json({
 			csrfToken: getOrCreateCsrfToken(req, res)
 		});
 	});
-	application.get('/profile', authenticate, (req, res) => {
+	application.get('/profile', disableCaching, authenticate, (req, res) => {
 		res.json({ 
 			user: req.user
 		});
 	});
-	application.post('/profile/refresh', csrfProtection, async (req, res, next) => {
+	application.post('/profile/refresh', disableCaching, csrfProtection, async (req, res, next) => {
 		try {
 			const jwe = req.cookies?.[authConfig.tokenCookieName];
 
@@ -1378,4 +1385,3 @@ function startServer() {
 
 
 }
-
