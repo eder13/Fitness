@@ -382,7 +382,10 @@ function showLegalInfo() {
     div_legalInfo.style.display = "inline-block";
 }
 
-$("#button_showLegalInfo, #button_tabLegalInfo").click(showLegalInfo);
+$("#button_showLegalInfo, #button_tabLegalInfo").click(function(event) {
+    event.preventDefault();
+    showLegalInfo();
+});
 
 $("#button_backFromLegalInfo").click(function () {
     div_legalInfo.style.display = "none";
