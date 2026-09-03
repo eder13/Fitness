@@ -592,6 +592,9 @@ function startServer() {
 		process.exit(1);
 	}
 
+	// set
+	application.set('trust proxy', 1);
+
 	// use
 	application.use('/', express.static(__dirname + '/client'));
 	application.use('/client', express.static(__dirname + '/client'));
@@ -601,9 +604,10 @@ function startServer() {
 		resave: false,
 		saveUninitialized: true,
 		cookie: {
-			domain: `.${config.DOMAIN}`,
+			domain: config.DOMAIN === 'localhost' ? undefined : `.${config.DOMAIN}`,
 			httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
+			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
 			path: '/'
 		}
 	}));
