@@ -774,6 +774,10 @@ function startServer() {
 
 			if (!user?.homeAccountId) {
 				res.clearCookie(authProvider.config.tokenCookieName, {
+					domain: `.${config.DOMAIN}`,
+					httpOnly: true,
+					secure: process.env.NODE_ENV === 'production',
+					sameSite: isAppRequest(req) ? 'none' : 'lax',
 					path: '/'
 				});
 
@@ -797,6 +801,10 @@ function startServer() {
 			console.error('Token refresh failed:', e);
 			
 			res.clearCookie(authProvider.config.tokenCookieName, {
+				domain: `.${config.DOMAIN}`,
+				httpOnly: true,
+				secure: process.env.NODE_ENV === 'production',
+				sameSite: isAppRequest(req) ? 'none' : 'lax',
 				path: '/'
 			});
 			return res.status(503).json({

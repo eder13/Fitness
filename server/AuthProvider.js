@@ -2,13 +2,16 @@
 /*jshint esversion: 6 */
 
 var fetch = require('isomorphic-fetch');
+var Config = require("./Config");
 var AuthConfig = require('./authConfig');
 var msal = require('@azure/msal-node');
+const { isAppRequest } = require('./helpers');
 
 class AuthProvider {
     TOKEN_NAME = 'MSAL_TOKEN_MICROSOFT_ENTRA_EXTERNAL_ID';
     _cryptoProvider = new msal.CryptoProvider();
     _config = new AuthConfig();
+    _commonConfig = new Config();
 
     constructor() {
         this._confidentialClient = new msal.ConfidentialClientApplication(this._config.confidentialClient);
@@ -136,6 +139,10 @@ class AuthProvider {
 
     async logout(request, response) {
         response.clearCookie(this._config.tokenCookieName, {
+            domain: `.${this._commonConfig.DOMAIN}`,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: isAppRequest(request) ? 'none' : 'lax',
             path: '/'
         });
 
