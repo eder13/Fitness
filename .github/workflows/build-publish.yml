@@ -91,7 +91,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Connect to tailscale network
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master') }}
+        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master') && !contains(github.event.head_commit.message, 'BUILD_AND_PUBLISH_IMAGE_ONLY') }}
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -99,7 +99,7 @@ jobs:
           tags: tag:ci
 
       - name: Set image on dev cluster
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && !contains(github.event.head_commit.message, 'BUILD_AND_PUBLISH_IMAGE_ONLY') }}
         uses: actions-hub/kubectl@master
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_DEV }}
@@ -108,7 +108,7 @@ jobs:
           args: -n ${{ env.NAMESPACE }} set image deployment/app app=${{ env.REGISTRY }}/${{ env.REPO }}:${{ github.sha }}
 
       - name: Set image on prod cluster
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' && !contains(github.event.head_commit.message, 'BUILD_AND_PUBLISH_IMAGE_ONLY') }}
         uses: actions-hub/kubectl@master
         env:
           KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_PROD }}
