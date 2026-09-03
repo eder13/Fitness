@@ -9,6 +9,7 @@ name: Create, publish and deploy project
 # TS_OAUTH_SECRET
 
 on:
+  workflow_dispatch:
   push:
     tags: "**"
     branches:
@@ -74,6 +75,10 @@ jobs:
         uses: docker/metadata-action@98669ae865ea3cffbcbaa878cf57c20bbf1c6c38
         with:
           images: ${{ env.REGISTRY }}/${{ env.REPO }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha
 
       - name: Build and push Docker image
         uses: docker/build-push-action@ad44023a93711e3deb337508980b4b5e9bcdc5dc
@@ -86,6 +91,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Connect to tailscale network
+        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master') }}
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
