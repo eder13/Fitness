@@ -240,7 +240,6 @@ class AuthService {
             httpOnly: true,
 			secure: process.env.NODE_ENV === 'production',
 			sameSite: isApp ? 'none' : 'lax',
-            //maxAge: TODO - "Remember Me" Login functionality
 			path: '/'
 		});
 	}

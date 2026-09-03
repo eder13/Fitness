@@ -595,7 +595,6 @@ function startServer() {
 	// use
 	application.use('/', express.static(__dirname + '/client'));
 	application.use('/client', express.static(__dirname + '/client'));
-	// TODO: it could be that I have to use regular cookies instead of req.session due to cross site cookies for Capacitor App support, keep for now as is
 	application.use(session({
 		name: process.env.SESSION_COOKIE_NAME ?? 'f_s',
 		secret: process.env.SESSION_COOKIE_SECRET,
@@ -812,13 +811,6 @@ function startServer() {
 				nonce: req.session.nonce,
 				isApp: isAppRequest(req)
 			};
-	
-		req.session.authState = {
-			stage: state.stage,
-			redirectTo: getAllowedRedirectTo(state.redirectTo),
-			nonce: state.nonce,
-			isApp: state.isApp
-		};
         
 		res.json({
 			authUrl: await authProvider.getAuthUrl(req, state, {
@@ -840,14 +832,10 @@ function startServer() {
 			}
 
 			const decodedState = JSON.parse(authProvider.base64Decode(req.body.state));
-			const sessionAuthState = req.session.authState;
-			const { nonce } = decodedState;
-			const stage = sessionAuthState?.stage ?? 'unknown';
-			const redirectTo = sessionAuthState?.redirectTo ?? '/';
-			const isApp = sessionAuthState?.isApp ?? false;
+			const { nonce, stage, redirectTo, isApp } = decodedState;
 
-			if (!sessionAuthState?.nonce || !sessionAuthState?.stage) {
-				throw new Error('Authentication state was lost', { cause: { stage, isApp } });
+			if (!nonce || !stage) {
+				throw new Error(`Required Authentication state was lost in redirect url, these were available: { "nonce": "${!!nonce}", "stage": "${!!stage}" }`, { cause: { stage, isApp } });
 			}
 
 			if (req.query.error || req.body.error) {
@@ -857,26 +845,30 @@ function startServer() {
 				}});
 			}
 			
-			if (req.session.nonce !== nonce || sessionAuthState.nonce !== nonce) {
+			if (req.session.nonce !== nonce) {
 				throw new Error('nonce check failed', { cause: {
 					stage,
 					isApp
 				}});
 			}
 
-			await authService.callback(req, res, stage, req.body.code, sessionAuthState);
-			res.redirect(redirectTo);
+			await authService.callback(req, res, stage, req.body.code, decodedState);
+			res.redirect(getAllowedRedirectTo(redirectTo));
 		} catch (e) {
+			let errorMessageLogs = '';
 			let isApp = false;
 			let stage = 'unknown';
 
 			if (e instanceof Error) {
+				errorMessageLogs = e.message;
 				isApp = e.cause?.isApp;
 				stage = e.cause?.stage ?? stage;
 			}
 
+			errorMessageLogs = !errorMessageLogs ? escape(JSON.stringify(e)) : errorMessageLogs;
+			logFile.log(errorMessageLogs, true, 2);
+
 			const errorMessage = 'Die Anmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.';
-			const errorMessageHtml = escape(errorMessage);
 			const errorRedirectWeb = `<meta http-equiv="refresh" content="3;url=/?error=true&message=${encodeURIComponent(errorMessage)}&flow=${encodeURIComponent(stage)}"></meta>`;
 
             res.send(
@@ -894,7 +886,7 @@ function startServer() {
 									: '<h1>Error during Authentication. Redirecting to Home.</h1>'
 							}
 							<p>
-									${errorMessageHtml}
+									${errorMessage}
 							</p>
 						</body>
 					</html>

@@ -122,8 +122,14 @@ var timer;
 ******************************************************************************************************************/
 $(function () {
     let csrfToken = null;
+    window.showLoginError = function (message) {
+        const error = $('#login__form-error');
+        error.text(message || 'Die Anmeldung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.');
+        error.removeClass('d-none');
+    };
     calculateHeightDivLoginContainer();
     getConfig();
+    checkErrorOnLoad();
 
     function calculateHeightDivLoginContainer() {
         const resizeObserver = new ResizeObserver((entries) => {
@@ -139,21 +145,23 @@ $(function () {
         loadConfig()
             .done(function (json) {
                 if (json.contactEmail) {
-                    button_link_mail_contact.textContent = json.contactEmail;
-                    button_link_mail_contact.setAttribute('href', `mailto:${json.contactEmail}`);
+                    $(button_link_mail_contact)
+                        .text(json.contactEmail)
+                        .attr('href', 'mailto:' + json.contactEmail);
                 }
             })
+    }
+
+    function checkErrorOnLoad() {
+        const currentUrl = new URL(window.location.href);
+        if (currentUrl.searchParams.has('error') && currentUrl.searchParams.has('message')) {
+            showLoginError(currentUrl.searchParams.get('message'));
+        }
     }
 
     function showLoginForm() {
         $('#login__form').removeClass('v-hidden');
     }
-
-    window.showLoginError = function (message) {
-        const error = $('#login__form-error');
-        error.text(message || 'Die Anmeldung ist derzeit nicht möglich. Bitte versuchen Sie es später erneut.');
-        error.removeClass('d-none');
-    };
 
     function showAccountInfo(json) {
         $('#account-info').removeClass('v-hidden');
