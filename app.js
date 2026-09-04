@@ -606,8 +606,10 @@ function startServer() {
 		cookie: {
 			domain: config.DOMAIN === 'localhost' ? undefined : `.${config.DOMAIN}`,
 			httpOnly: true,
-			secure: process.env.NODE_ENV === 'production',
-			sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+			...(process.env.NODE_ENV === 'production' ? {
+				secure: true,
+				sameSite: 'none',
+			} : {}),
 			path: '/'
 		}
 	}));
