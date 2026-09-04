@@ -104,7 +104,11 @@ var paragraph_paceUnitNotice = document.getElementById('paragraph_paceUnitNotice
 var label_input_exerciseDifficulty = document.getElementById('label_input_exerciseDifficulty');
 var png_timer = document.getElementById('png_timer')
 
-var SOCKET = io({ withCredentials: true });
+var SOCKET = io(window.location.href, {
+    withCredentials: true,
+    transports: ['polling'],
+    upgrade: false
+});
 var PACE_UNITS = "";
 var PACE_INVERT = "";
 var RUNTIME_CONFIG = {
@@ -274,7 +278,8 @@ $(function () {
         });
 
     if (typeof SOCKET !== 'undefined') {
-        SOCKET.on('connect_error', function () {
+        SOCKET.on('connect_error', function (error) {
+            console.error('Socket.IO connect_error:', error);
             showLoginForm();
             showLoginError('Die Anmeldung konnte nicht geprüft werden. Bitte melden Sie sich erneut an.');
         });
