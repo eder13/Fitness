@@ -185,6 +185,27 @@ function refreshEventLog() {
 	}
 }
 
+function waitForHttpAction(socket) {
+	// Legacy handlers use callbacks rather than promises. Wait until their
+	// event queue has been quiet for a short period, but never hold a request
+	// indefinitely if a handler fails to produce an event.
+	return new Promise(function (resolve) {
+		var lastEventCount = socket.emitted.length;
+		var quietSince = Date.now();
+		var startedAt = Date.now();
+		var timer = setInterval(function () {
+			if (socket.emitted.length !== lastEventCount) {
+				lastEventCount = socket.emitted.length;
+				quietSince = Date.now();
+			}
+			if (Date.now() - quietSince >= 100 || Date.now() - startedAt >= 15000) {
+				clearInterval(timer);
+				resolve();
+			}
+		}, 10);
+	});
+}
+
 function uiRefresh() {
 	let start = Date.now();
 	var iPlayer;
@@ -1283,7 +1304,9 @@ function startServer() {
 		userRecord.allowEmail = userRecord.allowEmail === true;
 		userRecord.hideInactivePlayers = userRecord.hideInactivePlayers === true;
 
-		FITNESS_MANAGER.addToEventLog(playerUsername + " hat sich angemeldet!");
+		if (!socket.isHttp) {
+			FITNESS_MANAGER.addToEventLog(playerUsername + " hat sich angemeldet!");
+		}
 		OnPlayerConnection(socket);
 		loadPlayer(playerUsername, socket.id, function (loadPlayerResult) {
 			logFile.log(loadPlayerResult, false, 0);
@@ -1300,7 +1323,9 @@ function startServer() {
 		});
 
 		FITNESS_MANAGER.colorList[playerUsername] = userRecord.color;
-		ONLINE_STATE[playerUsername] = true;
+		if (!socket.isHttp) {
+			ONLINE_STATE[playerUsername] = true;
+		}
 
 		//someone disconnects
 		socket.on('disconnect', function () {
@@ -1310,7 +1335,9 @@ function startServer() {
 
 			if (PLAYER_LIST[socket.id] != undefined) {
 				ONLINE_STATE[PLAYER_LIST[socket.id].name] = false;
-				FITNESS_MANAGER.addToEventLog(PLAYER_LIST[socket.id].name + " hat sich abgemeldet.");
+				if (!socket.isHttp) {
+					FITNESS_MANAGER.addToEventLog(PLAYER_LIST[socket.id].name + " hat sich abgemeldet.");
+				}
 				savePlayer(PLAYER_LIST[socket.id]);
 				delete PLAYER_LIST[socket.id];
 			}
@@ -1335,9 +1362,11 @@ function startServer() {
 	function createHttpSocket(user) {
 		var handlers = {};
 		var emitted = [];
+		var disconnected = false;
 		var socket = {
 			id: 'http-' + crypto.randomUUID(),
 			user: user,
+			isHttp: true,
 			on: function (eventName, handler) {
 				handlers[eventName] = handlers[eventName] || [];
 				handlers[eventName].push(handler);
@@ -1346,7 +1375,11 @@ function startServer() {
 				emitted.push({ event: eventName, data: data });
 				(handlers[eventName] || []).forEach(function (handler) { handler(data); });
 			},
-			disconnect: function () {},
+			disconnect: function () {
+				if (disconnected) return;
+				disconnected = true;
+				(handlers.disconnect || []).slice().forEach(function (handler) { handler(); });
+			},
 			receive: function (eventName, data) {
 				(handlers[eventName] || []).forEach(function (handler) { handler(data); });
 			},
@@ -1359,6 +1392,7 @@ function startServer() {
 		return new Promise(function (resolve, reject) {
 			var socket = createHttpSocket(user);
 			var timeout = setTimeout(function () {
+				socket.disconnect();
 				reject(new Error('Player initialization timed out'));
 			}, 15000);
 			socket.on('authenticated', function (data) {
@@ -1374,13 +1408,14 @@ function startServer() {
 	}
 
 	application.get('/api/bootstrap', disableCaching, authenticate, async function (req, res) {
+		var socket;
 		try {
-			var socket = await connectHttpPlayer(req.user);
+			socket = await connectHttpPlayer(req.user);
 			res.json({ events: socket.emitted });
-			delete SOCKET_LIST[socket.id];
-			delete PLAYER_LIST[socket.id];
 		} catch (error) {
 			res.status(500).json({ code: 'ERR_PLAYER_INITIALIZATION_FAILED' });
+		} finally {
+			if (socket) socket.disconnect();
 		}
 	});
 
@@ -1391,21 +1426,19 @@ function startServer() {
 			return res.status(400).json({ code: 'ERR_INVALID_ACTION' });
 		}
 
+		var socket;
 		try {
-			var socket = await connectHttpPlayer(req.user);
+			socket = await connectHttpPlayer(req.user);
 			// Do not expose the bootstrap events for every request.
 			socket.emitted.length = 0;
 			socket.receive(action, data);
-			// FitnessManager callbacks are asynchronous, while the HTTP API is
-			// request/response based. Give them a chance to finish before returning
-			// the current state/events to the browser.
-			await new Promise(function (resolve) { setTimeout(resolve, 50); });
+			await waitForHttpAction(socket);
 			res.json({ events: socket.emitted });
-			delete SOCKET_LIST[socket.id];
-			delete PLAYER_LIST[socket.id];
 		} catch (error) {
 			console.error('HTTP action failed:', error);
 			res.status(500).json({ code: 'ERR_ACTION_FAILED' });
+		} finally {
+			if (socket) socket.disconnect();
 		}
 	});
 
