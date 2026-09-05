@@ -60,7 +60,9 @@
 
 			<div class="v-hidden" id="account-info">
 				<div>
-					<strong>Eingeloggt als:</strong><span class="d-none" id="account-info__id"></span>
+					<strong>Eingeloggt als:</strong>
+					<span class="d-none" id="account-info__csrf"></span>
+					<span class="d-none" id="account-info__id"></span>
 					<span id="account-info__email"></span>
 					<span class="d-none" id="account-info__username"></span>
 					<form id="logout__form" method="post" action="/signout">
@@ -911,7 +913,6 @@
 	</footer>
 
 	<script type="text/javascript" src="./vendor/jquery-3.4.1.min.js"></script>
-	<script type="text/javascript" src="./vendor/socket.io.min.js"></script>
 	<script type="text/javascript" src="./vendor/Chart.js"></script>
 	<script type="text/javascript" src="./js/common.js"></script>
 	<script type="text/javascript" src="./js/index.js"></script>

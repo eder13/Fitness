@@ -1,6 +1,6 @@
 # Fitness
 
-Fitness is a small workout tracking application with Microsoft Entra External ID authentication, real-time updates through Socket.IO, and optional Dropbox-backed persistence.
+Fitness is a small workout tracking application with Microsoft Entra External ID authentication, HTTP client/server updates, and optional Dropbox-backed persistence.
 
 ## Local development
 
@@ -81,7 +81,6 @@ SESSION_COOKIE_NAME=f_s
 TOKEN_COOKIE_NAME=f_t
 TOKEN_EXPIRATION_TIME_MINUTES=60m
 APP_USER_AGENT_STRING=your-mobile-app-user-agent
-SOCKET_ALLOWED_ORIGINS=http://localhost:2000,https://example.com/
 SIGN_UP_SIGN_IN_FLOW=SignUpSignInFlow
 REDIRECT_URI=http://localhost:2000/auth/callback
 POST_LOGOUT_REDIRECT_URI=http://localhost:2000/
@@ -98,12 +97,6 @@ POST_LOGOUT_REDIRECT_URI=http://localhost:2000/
 `TOKEN_EXPIRATION_TIME_MINUTES` controls expiration value of the id token, per default in entra id this rotates every 60 minutes which is why the default is '60m'.
 
 `APP_USER_AGENT_STRING` is only required when detecting requests from a Capacitor/mobile application.
-
-`SOCKET_ALLOWED_ORIGINS` may contain multiple comma-separated origins:
-
-```dotenv
-SOCKET_ALLOWED_ORIGINS=http://localhost:2000,http://localhost:8100
-```
 
 `SIGN_UP_SIGN_IN_FLOW` is a string to represent the login flow - usually it is good practice to set it to the flow name inside Entra ID, but not a must.
 
@@ -126,7 +119,6 @@ http://localhost:2000
 - If the application exits immediately, check the required Entra, session, and token environment variables.
 - If Dropbox is enabled, also check `DB_TOKEN` and `PROXY_MODE`.
 - If login redirects to the wrong location, compare the Entra redirect URI with `REDIRECT_URI` character by character.
-- If Socket.IO cannot connect, make sure the browser origin is included in `SOCKET_ALLOWED_ORIGINS`.
 - Use exactly `http://localhost:2000` in the browser and avoid mixing `localhost` with `127.0.0.1`.
 - If authentication cookies are not stored, check the browser's cookie settings and make sure the local URL matches the configured origin.
 - If old user data is expected, make sure the relevant local or Dropbox save files are available before starting the application.
@@ -142,7 +134,6 @@ Production deployments must provide all required environment variables at runtim
 - Regular backups
 - HTTPS
 - Production Entra redirect and logout URLs
-- The correct production Socket.IO origins
 
 ℹ️❗️ The application currently assumes a single running instance because application state and the authentication token cache are held in memory. ℹ️❗️
 

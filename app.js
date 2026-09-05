@@ -29,24 +29,6 @@ var escape = require('lodash/escape');
 var storageManager = new JSONFileStorage('./saves');
 var config = new Config();
 var server = new http.Server(application);
-var io = require('socket.io')(server, {
-	pingTimeout: 3600000,
-	allowRequest: function (request, callback) {
-		var origin = request.headers.origin;
-		var configuredOrigins = (process.env.SOCKET_ALLOWED_ORIGINS || '').split(',').map(function (value) {
-			return value.trim();
-		}).filter(Boolean);
-		var defaultOrigins = [
-			'http://localhost:' + config.LOCAL_PORT,
-			'http://localhost:8080',
-			'https://' + config.DOMAIN,
-			'http://' + config.DOMAIN
-		];
-		var allowedOrigins = new Set(configuredOrigins.length > 0 ? configuredOrigins : defaultOrigins);
-		// Native clients may not send an Origin header. Browser origins must be explicit.
-		callback(null, !origin || allowedOrigins.has(origin));
-	}
-});
 var dropbox = new DropBoxHandler();
 var logFile = new Log();
 var common = new Common();
@@ -188,17 +170,6 @@ function cyclicAquisition() {
 				}
 			}
 		});
-	}
-
-
-
-	for (let iPlayer in PLAYER_LIST) {
-		let player = PLAYER_LIST[iPlayer];
-		if (SOCKET_LIST[player.id] != undefined) {
-			SOCKET_LIST[player.id].emit('OnlineStatus', {
-				online: ONLINE_STATE,
-			});
-		}
 	}
 
 	FITNESS_MANAGER.today = date;
@@ -614,6 +585,7 @@ function startServer() {
 		}
 	}));
 	application.use(express.urlencoded({ extended: false }));
+	application.use(express.json({ limit: '100kb' }));
 	application.use(cookieParser());
 
 	// helper functions
@@ -685,30 +657,6 @@ function startServer() {
 		}
 
 		next();
-	}
-	function getCookieValue(cookieHeader, name) {
-		if (!cookieHeader) return undefined;
-		const prefix = `${name}=`;
-		const cookie = cookieHeader.split(';').map(value => value.trim()).find(value => value.startsWith(prefix));
-		return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : undefined;
-	}
-	async function authenticateSocket(socket, next) {
-		try {
-			const jwe = getCookieValue(socket.handshake.headers.cookie, authConfig.tokenCookieName);
-			if (!jwe) return next(new Error('AUTHENTICATION_REQUIRED'));
-
-			const { token, expiresAt } = await authService.decryptJWE(jwe);
-			const user = await authService.validateToken(token, expiresAt);
-			if (!user?.username || !user?.id || !user?.email) {
-				return next(new Error('AUTHENTICATION_REQUIRED'));
-			}
-
-			socket.user = user;
-			next();
-		} catch (error) {
-			console.error('Socket authentication failed:', error);
-			next(new Error('AUTHENTICATION_REQUIRED'));
-		}
 	}
 	async function authenticate(req, res, next) {
 		try {
@@ -909,13 +857,9 @@ function startServer() {
 		}
 	});
 
-	server.listen(process.env.PORT || config.LOCAL_PORT);
-	logFile.log("Started Server", true, 0);
-	io.use(authenticateSocket);
-
-	io.sockets.on('connection', function (socket) {
-		OnSocketConnection(socket);
-	});
+	// The application uses ordinary authenticated HTTP requests. The legacy
+	// event handlers are invoked through the request adapter below so existing
+	// domain behavior remains unchanged during this migration.
 
 	//PLAYER CONNECTS (LOGIN)
 	OnPlayerConnection = function (socket) {
@@ -1387,6 +1331,86 @@ function startServer() {
 
 
 	};
+
+	function createHttpSocket(user) {
+		var handlers = {};
+		var emitted = [];
+		var socket = {
+			id: 'http-' + crypto.randomUUID(),
+			user: user,
+			on: function (eventName, handler) {
+				handlers[eventName] = handlers[eventName] || [];
+				handlers[eventName].push(handler);
+			},
+			emit: function (eventName, data) {
+				emitted.push({ event: eventName, data: data });
+				(handlers[eventName] || []).forEach(function (handler) { handler(data); });
+			},
+			disconnect: function () {},
+			receive: function (eventName, data) {
+				(handlers[eventName] || []).forEach(function (handler) { handler(data); });
+			},
+			emitted: emitted
+		};
+		return socket;
+	}
+
+	function connectHttpPlayer(user) {
+		return new Promise(function (resolve, reject) {
+			var socket = createHttpSocket(user);
+			var timeout = setTimeout(function () {
+				reject(new Error('Player initialization timed out'));
+			}, 15000);
+			socket.on('authenticated', function (data) {
+				clearTimeout(timeout);
+				resolve(socket);
+			});
+			socket.on('usernameUnavailable', function (data) {
+				clearTimeout(timeout);
+				reject(new Error(data && data.code || 'ERR_USERNAME_ALREADY_USED'));
+			});
+			OnSocketConnection(socket);
+		});
+	}
+
+	application.get('/api/bootstrap', disableCaching, authenticate, async function (req, res) {
+		try {
+			var socket = await connectHttpPlayer(req.user);
+			res.json({ events: socket.emitted });
+			delete SOCKET_LIST[socket.id];
+			delete PLAYER_LIST[socket.id];
+		} catch (error) {
+			res.status(500).json({ code: 'ERR_PLAYER_INITIALIZATION_FAILED' });
+		}
+	});
+
+	application.post('/api/action', disableCaching, csrfProtection, authenticate, async function (req, res) {
+		var action = req.body && req.body.action;
+		var data = req.body && req.body.data;
+		if (typeof action !== 'string' || action.length > 100) {
+			return res.status(400).json({ code: 'ERR_INVALID_ACTION' });
+		}
+
+		try {
+			var socket = await connectHttpPlayer(req.user);
+			// Do not expose the bootstrap events for every request.
+			socket.emitted.length = 0;
+			socket.receive(action, data);
+			// FitnessManager callbacks are asynchronous, while the HTTP API is
+			// request/response based. Give them a chance to finish before returning
+			// the current state/events to the browser.
+			await new Promise(function (resolve) { setTimeout(resolve, 50); });
+			res.json({ events: socket.emitted });
+			delete SOCKET_LIST[socket.id];
+			delete PLAYER_LIST[socket.id];
+		} catch (error) {
+			console.error('HTTP action failed:', error);
+			res.status(500).json({ code: 'ERR_ACTION_FAILED' });
+		}
+	});
+
+	server.listen(process.env.PORT || config.LOCAL_PORT);
+	logFile.log("Started Server", true, 0);
 
 
 
