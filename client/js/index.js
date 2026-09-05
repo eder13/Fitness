@@ -104,11 +104,43 @@ var paragraph_paceUnitNotice = document.getElementById('paragraph_paceUnitNotice
 var label_input_exerciseDifficulty = document.getElementById('label_input_exerciseDifficulty');
 var png_timer = document.getElementById('png_timer')
 
-var SOCKET = io(window.location.href, {
-    withCredentials: true,
-    transports: ['polling'],
-    upgrade: false
-});
+// HTTP transport replacing the former Socket.IO connection.  The public
+// interface stays event-shaped so the UI can be migrated incrementally, but
+// every operation is now a normal authenticated request/response cycle.
+var SOCKET = (function () {
+    var listeners = {};
+    function dispatch(eventName, data) {
+        (listeners[eventName] || []).forEach(function (handler) { handler(data); });
+    }
+    function processResponse(response) {
+        (response.events || []).forEach(function (entry) {
+            dispatch(entry.event, entry.data);
+        });
+    }
+    return {
+        on: function (eventName, handler) {
+            listeners[eventName] = listeners[eventName] || [];
+            listeners[eventName].push(handler);
+        },
+        connect: function () {
+            $.ajax({ url: '/api/bootstrap', method: 'GET', dataType: 'json' })
+                .done(processResponse)
+                .fail(function (xhr) { dispatch('connect_error', xhr); });
+        },
+        emit: function (action, data) {
+            return $.ajax({
+                url: '/api/action',
+                method: 'POST',
+                contentType: 'application/json',
+                dataType: 'json',
+                headers: { 'X-CSRF-Token': $('#account-info__csrf').text() },
+                data: JSON.stringify({ action: action, data: data })
+            }).done(processResponse).fail(function (xhr) {
+                dispatch('connect_error', xhr);
+            });
+        }
+    };
+}());
 var PACE_UNITS = "";
 var PACE_INVERT = "";
 var RUNTIME_CONFIG = {
@@ -117,6 +149,14 @@ var RUNTIME_CONFIG = {
 var ONLINE_STATUS = {};
 var timerStatus = false;
 var timer;
+
+function isLoggedIn() {
+    return [
+        $('#account-info__id').text().trim(),
+        $('#account-info__email').text().trim(),
+        $('#account-info__username').text().trim()
+    ].every(Boolean);
+}
 
 /******************************************************************************************************************
 *******************************************************************************************************************
@@ -172,6 +212,8 @@ $(function () {
         $('#account-info__id').text(json.user.id);
         $('#account-info__email').text(json.user.email);
         $('#account-info__username').text(json.user.username);
+
+        input_onlineIndicator.value = `Eingeloggt als: ${json.user.username}`;
     }
 
     function loadProfile() {
@@ -227,6 +269,7 @@ $(function () {
                 loadProfile()
                     .done(function (json) {
                         showAccountInfo(json);
+                        SOCKET.connect();
                     })
                     .fail(function (profileXhr, profileTextStatus, profileError) {
                         showLoginForm();
@@ -265,10 +308,12 @@ $(function () {
     $.getJSON('/csrf-token')
         .done(function (response) {
             csrfToken = response.csrfToken;
+            $('#account-info__csrf').text(response.csrfToken);
 
             loadProfile()
                 .done(function (json) {
                     showAccountInfo(json);
+                    SOCKET.connect();
                 })
                 .fail(handleProfileLoadFailure);
         })
@@ -871,19 +916,6 @@ SOCKET.on("sendAchievementDataForExercise", function (data) {
     $("#adminInput_achievementCategory").val(data.category);
 });
 
-SOCKET.on("OnlineStatus", function (data) {
-    console.log("OnlineStatus", data);
-    let strOnlineMsg = "Online: ";
-
-    for (let name in data.online) {
-        if (data.online[name]) {
-            strOnlineMsg += name + ", ";
-        }
-    }
-    strOnlineMsg = strOnlineMsg.substring(0, strOnlineMsg.length - 2);
-    input_onlineIndicator.value = strOnlineMsg;
-});
-
 
 
 function generateFadeOutMessage(msg, bottom, left) {
@@ -917,7 +949,9 @@ function requestGraphUpdate() {
 }
 
 function requestExerciseGraphUpdate() {
-    SOCKET.emit("requestExerciseGraphUpdate", { id: select_statisticsExercise.value });
+    if (isLoggedIn()) {
+        SOCKET.emit("requestExerciseGraphUpdate", { id: select_statisticsExercise.value });
+    }
 }
 
 function requestExerciseListUpdate() {
